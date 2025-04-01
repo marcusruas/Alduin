@@ -29,10 +29,10 @@ namespace Alduin.Core.Services.OpenAI
             if (!Directory.Exists(staticFolder))
                 Directory.CreateDirectory(staticFolder);
 
-            string fileName = $"{Guid.NewGuid()}.mp3";
+            string fileName = $"{Guid.NewGuid()}.wav";
             string filePath = Path.Combine(staticFolder, fileName);
 
-            var options = new SpeechGenerationOptions() { ResponseFormat = GeneratedSpeechFormat.Mp3 };
+            var options = new SpeechGenerationOptions() { ResponseFormat = GeneratedSpeechFormat.Wav };
             var speechAudio = await new OpenAIClient(_settings.OpenAISettings.ApiKey)
                     .GetAudioClient(_settings.OpenAISettings.Models.SpeechGeneratorModel)
                     .GenerateSpeechAsync(speech, GeneratedSpeechVoice.Echo, options);
