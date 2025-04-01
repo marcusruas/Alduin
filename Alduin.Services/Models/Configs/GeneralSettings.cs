@@ -8,7 +8,7 @@ namespace Alduin.Core.Models.Configs
 {
     public class GeneralSettings
     {
-        public string BrainFolder { get; set; }
+        public string AudiosFolder { get; set; }
         public OpenAISettings OpenAISettings { get; set; }
     }
 }

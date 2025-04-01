@@ -13,10 +13,13 @@ builder.Services.AddControllers();
 var settings = new GeneralSettings();
 builder.Configuration.GetSection("GeneralSettings").Bind(settings);
 builder.Services.AddSingleton(settings);
+builder.Services.AddMemoryCache();
 
 builder.Services.AddScoped<IOpenAIService, OpenAIService>();
 
 var app = builder.Build();
+
+app.UseStaticFiles();
 
 if (app.Environment.IsDevelopment())
 {
