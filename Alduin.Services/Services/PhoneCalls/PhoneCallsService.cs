@@ -11,6 +11,9 @@ using Microsoft.Extensions.Caching.Memory;
 using OpenAI.Chat;
 using System.Net.Http;
 using Alduin.Core.Models.AI;
+using Polly;
+using Polly.Contrib.WaitAndRetry;
+using Polly.Retry;
 
 namespace Alduin.Core.Services.PhoneCalls
 {
@@ -63,25 +66,21 @@ namespace Alduin.Core.Services.PhoneCalls
         private async Task<Stream> GetPhoneCallAudio(string recordingUrl)
         {
             var httpClient = _httpClientFactory.CreateClient("Twillio");
-            string url = recordingUrl + ".wav";
-            httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", _settings.TwillioToken);
-            var delaySeconds = 1500;
 
-            for (int attempt = 1; attempt <= 5; attempt++)
+            var delay = Backoff.DecorrelatedJitterBackoffV2(TimeSpan.FromSeconds(1), 5);
+            var retryPolicy = Policy
+            .Handle<HttpRequestException>()
+            .OrResult<HttpResponseMessage>(r => r.StatusCode == HttpStatusCode.NotFound)
+            .WaitAndRetryAsync(delay, (outcome, timespan, retryAttempt, context) =>
             {
-                var httpResponse = await httpClient.GetAsync(url);
+                Console.WriteLine($"Tentativa {retryAttempt} falhou. Aguardando {timespan.TotalSeconds} segundos antes de tentar novamente.");
+            });
 
-                if (httpResponse.IsSuccessStatusCode)
-                {
-                    return await httpResponse.Content.ReadAsStreamAsync();
-                }
-                else if (httpResponse.StatusCode == HttpStatusCode.NotFound)
-                {
-                    await Task.Delay(TimeSpan.FromMilliseconds(delaySeconds));
-                }
-            }
+            var response = await retryPolicy.ExecuteAsync(() => httpClient.GetAsync($"{recordingUrl}.wav"));
 
-            throw new Exception("Failed to get Phone Call Audio");
+            response.EnsureSuccessStatusCode();
+
+            return await response.Content.ReadAsStreamAsync();
         }
     }
 }
