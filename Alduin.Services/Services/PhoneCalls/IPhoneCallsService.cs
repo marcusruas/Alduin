@@ -9,7 +9,7 @@ namespace Alduin.Core.Services.PhoneCalls
 {
     public interface IPhoneCallsService
     {
-        void StartPhoneCall(string callSid);
+        Task StartPhoneCall(string callSid);
         Task<AIResponse> GenerateResponseFromAssistant(string callSid, string userRecordingUrl);
     }
 }

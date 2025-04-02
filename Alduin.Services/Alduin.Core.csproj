@@ -14,4 +14,10 @@
 		<PackageReference Include="Polly.Contrib.WaitAndRetry" Version="1.1.1" />
 	</ItemGroup>
 
+    <ItemGroup>
+      <None Update="Prompts\OperatorPrompt.txt">
+        <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      </None>
+    </ItemGroup>
+
 </Project>

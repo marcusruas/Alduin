@@ -1,17 +1,8 @@
 ﻿using System.Diagnostics;
-using System.Net;
-using System.Net.Http.Headers;
-using Alduin.Core;
 using Alduin.Core.Models.Configs;
-using Alduin.Core.Services.OpenAI;
 using Alduin.Core.Services.PhoneCalls;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Caching.Memory;
-using OpenAI;
-using OpenAI.Chat;
-using Twilio.Rest.Api.V2010.Account;
 using Twilio.TwiML;
-using Twilio.TwiML.Voice;
 namespace Alduin.API.Controllers
 {
     [Route("api/phonecalls")]
@@ -28,7 +19,7 @@ namespace Alduin.API.Controllers
         private IPhoneCallsService _phoneCallsService;
         private readonly GeneralSettings _settings;
 
-        public const string CURRENT_NGROK_URL = "https://bd5a-2804-14d-4c84-11a7-911e-dac7-c064-f6f.ngrok-free.app/api/phonecalls/customer-service";
+        public const string CURRENT_NGROK_URL = "https://da4a-2804-14d-4c84-11a7-ecb8-8c0a-c330-39c4.ngrok-free.app/api/phonecalls/customer-service";
 
         [HttpPost("incoming")]
         public IActionResult Incoming([FromForm] string CallSid)
@@ -36,7 +27,7 @@ namespace Alduin.API.Controllers
             _phoneCallsService.StartPhoneCall(CallSid);
 
             var response = new VoiceResponse();
-            PlayAudioFile(response, _settings.GreetingsAudio, 2);
+            PlayAudioFile(response, _settings.GreetingsAudio);
             return Content(response.ToString(), "application/xml");
         }
 
@@ -53,7 +44,7 @@ namespace Alduin.API.Controllers
             return Content(response.ToString(), "application/xml");
         }
 
-        private void PlayAudioFile(VoiceResponse voice, string audioName, int timeout = 2)
+        private void PlayAudioFile(VoiceResponse voice, string audioName)
         {
             try
             {
@@ -61,7 +52,7 @@ namespace Alduin.API.Controllers
 
                 var speechUri = new Uri(url); 
                 voice.Play(speechUri);
-                voice.Record(action: new Uri(CURRENT_NGROK_URL), timeout: timeout, maxLength: 30);
+                voice.Record(action: new Uri(CURRENT_NGROK_URL), timeout: 3, maxLength: 30);
             }
             finally { }
         }

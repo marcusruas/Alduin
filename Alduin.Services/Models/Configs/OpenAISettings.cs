@@ -24,7 +24,6 @@ namespace Alduin.Core.Models.Configs
     {
         public string AnalyzeAudioSystemPrompt { get; set; }
         public string AnalyzeAudioRequestPrompt { get; set; }
-        public string OperatorPrompt { get; set; }
         public string GreetingsPrompt { get; set; }
     }
 }

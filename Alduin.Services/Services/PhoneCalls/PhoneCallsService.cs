@@ -25,6 +25,8 @@ namespace Alduin.Core.Services.PhoneCalls
             _cache = cache;
             _openAIService = openAIService;
             _settings = settings;
+
+            _promptsFolder = Path.Combine(AppContext.BaseDirectory, "Prompts");
         }
 
         private readonly IHttpClientFactory _httpClientFactory;
@@ -32,11 +34,22 @@ namespace Alduin.Core.Services.PhoneCalls
         private readonly IOpenAIService _openAIService;
         private readonly GeneralSettings _settings;
 
-        public void StartPhoneCall(string callSid)
+        private readonly string _promptsFolder;
+
+        public async Task StartPhoneCall(string callSid)
         {
+            string promptPath = Path.Combine(_promptsFolder, "OperatorPrompt.txt");
+
+            if (!File.Exists(promptPath))
+                throw new Exception("Prompt not found");
+
+            var operatorPrompt = await File.ReadAllLinesAsync(promptPath, Encoding.UTF8);
+            var unifiedPrompt = string.Join(' ', operatorPrompt.Where(x => !string.IsNullOrWhiteSpace(x)));
+
             var conversation = new List<ChatMessage>()
             {
-                ChatMessage.CreateSystemMessage(_settings.OpenAISettings.Prompts.OperatorPrompt)
+                ChatMessage.CreateSystemMessage(unifiedPrompt),
+                ChatMessage.CreateAssistantMessage("Olá, aqui é da Unidas. Meu nome é Alduin, com quem eu falo?")
             };
 
             _cache.Set(callSid, conversation, DateTime.Now.AddHours(1));
@@ -47,6 +60,8 @@ namespace Alduin.Core.Services.PhoneCalls
             var audio = await GetPhoneCallAudio(userRecordingUrl);
 
             var audioTranscription = await _openAIService.GenerateTranscriptFromRecording(audio);
+
+            Console.WriteLine("O que você falou: "+audioTranscription);
 
             var cachedConversation = _cache.Get<List<ChatMessage>>(callSid);
 
@@ -73,7 +88,7 @@ namespace Alduin.Core.Services.PhoneCalls
             .OrResult<HttpResponseMessage>(r => r.StatusCode == HttpStatusCode.NotFound)
             .WaitAndRetryAsync(delay, (outcome, timespan, retryAttempt, context) =>
             {
-                Console.WriteLine($"Tentativa {retryAttempt} falhou. Aguardando {timespan.TotalSeconds} segundos antes de tentar novamente.");
+                Console.WriteLine($"\n\nTentativa {retryAttempt} falhou. Aguardando {timespan.TotalSeconds} segundos antes de tentar novamente.\n\n");
             });
 
             var response = await retryPolicy.ExecuteAsync(() => httpClient.GetAsync($"{recordingUrl}.wav"));
