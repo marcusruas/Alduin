@@ -8,6 +8,7 @@ namespace Alduin.Core.Models.Configs
 {
     public class OpenAISettings
     {
+        public string RealtimeWebSocketUrl { get; set; }
         public string ApiKey { get; set; }
         public OpenAIModels Models { get; set; }
         public OpenAIPrompts Prompts { get; set; }
