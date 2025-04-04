@@ -27,10 +27,6 @@ namespace Alduin.API.Controllers
 
             var response = new VoiceResponse();
 
-            string speechUrl = Path.Combine($"{Request.Scheme}://{Request.Host}", _settings.AudiosFolder, _settings.GreetingsAudio).Replace("\\", "/");
-            var greetingsAudio = new Uri(speechUrl);
-            response.Play(greetingsAudio);
-
             var connect = new Connect();
             connect.Stream(url: $"wss://{Request.Host}/ws/customer-service");
             response.Append(connect);

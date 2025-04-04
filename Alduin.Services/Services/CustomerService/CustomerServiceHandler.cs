@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
+using Alduin.Core.Models.AI;
 using Alduin.Core.Models.Configs;
 using static System.Collections.Specialized.BitVector32;
 using static System.Runtime.InteropServices.JavaScript.JSType;
@@ -23,7 +24,7 @@ namespace Alduin.Core.Services.CustomerService
         }
 
         private readonly string _operatorPrompt;
-        private string _streamId;
+        private string? _streamId;
 
         public async Task HandleWebSocket(WebSocket clientWebSocket)
         {
@@ -69,15 +70,35 @@ namespace Alduin.Core.Services.CustomerService
             };
 
             await SendWebSocketMessage(openAiWebSocket, sessionUpdate);
+
+            //IA vai começar a conversa
+            var initialConversationItem = new
+            {
+                type = "conversation.item.create",
+                item = new
+                {
+                    type = "message",
+                    role = "user",
+                    content = new[]
+                    {
+                        new
+                        {
+                            type = "input_text",
+                            text = _operatorPrompt
+                        }
+                    }
+                }
+            };
+
+            await SendWebSocketMessage(openAiWebSocket, initialConversationItem);
+            await SendWebSocketMessage(openAiWebSocket, new { type = "response.create" });
         }
 
         private async Task HandleOpenAIWebSocket(ClientWebSocket openAiWebSocket, WebSocket clientWebSocket)
         {
-            var buffer = new byte[4096];
+            var buffer = new byte[8192 * 2];
             while (openAiWebSocket.State == WebSocketState.Open)
             {
-                //Console.WriteLine("\n[OPEN AI] Recebido um novo evento.");
-
                 var result = await openAiWebSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
                 var message = Encoding.UTF8.GetString(buffer, 0, result.Count);
 
@@ -85,49 +106,44 @@ namespace Alduin.Core.Services.CustomerService
                 {
                     if (result.MessageType == WebSocketMessageType.Close)
                     {
-                        Console.WriteLine("[OPEN AI] [AVISO] Web Socket da OpenAI fechou.");
-                        await openAiWebSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None);
-                        break;
-                    }
-                    else if (string.IsNullOrWhiteSpace(message) || !message.StartsWith("{") || !message.EndsWith("}"))
-                    {
-                        Console.WriteLine("[OPEN AI] [AVISO] Mensagem está vazia.\n");
-                    }
-                    else if (clientWebSocket.State != WebSocketState.Open)
-                    {
-                        Console.WriteLine("[OPEN AI] [AVISO] Web Socket do Client fechou.\n");
-                        await openAiWebSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None);
-                        break;
-                    }
-                    else
-                    {
-                        //Console.WriteLine($"[OPEN AI] Evento: {message}\n");
+                        Console.WriteLine("[OPEN AI] Web Socket da Open AI foi fechado.");
 
-                        using (var doc = JsonDocument.Parse(message))
+                        if (clientWebSocket.State == WebSocketState.Open)
+                            await clientWebSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None);
+
+                        break;
+                    }
+
+                    if (clientWebSocket.State != WebSocketState.Open)
+                    {
+                        Console.WriteLine("[OPEN AI] Web Socket do Client foi fechado. Fechando WS da Open AI");
+
+                        if (openAiWebSocket.State == WebSocketState.Open)
+                            await openAiWebSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None);
+
+                        break;
+                    }
+
+                    if (!TryParseJson(message, out var document) || document == null)
+                        continue;
+
+                    var root = document.RootElement;
+                    var eventType = root.GetProperty("type").GetString();
+
+                    if (eventType == "response.audio.delta" && !string.IsNullOrWhiteSpace(_streamId))
+                    {
+                        var delta = root.GetProperty("delta").GetString();
+                        var audioDelta = new
                         {
-                            var root = doc.RootElement;
-                            var eventType = root.GetProperty("type").GetString();
-
-                            Console.WriteLine("[OPEN AI] Tipo de evento: " + eventType);
-
-                            if (eventType == "response.audio.delta")
+                            @event = "media",
+                            streamSid = _streamId,
+                            media = new
                             {
-                                if (!string.IsNullOrWhiteSpace(_streamId))
-                                {
-                                    var delta = root.GetProperty("delta").GetString();
-                                    var mediaEvent = new MediaEvent
-                                    {
-                                        StreamSid = _streamId,
-                                        Media = new MediaPayload
-                                        {
-                                            Payload = delta
-                                        }
-                                    };
-
-                                    await SendWebSocketMessage(clientWebSocket, mediaEvent);
-                                }
+                                payload = delta
                             }
-                        }
+                        };
+
+                        await SendWebSocketMessage(clientWebSocket, audioDelta);
                     }
                 }
                 catch(Exception ex)
@@ -139,11 +155,9 @@ namespace Alduin.Core.Services.CustomerService
 
         private async Task HandleClientWebSocket(WebSocket clientWebSocket, ClientWebSocket openAiWebSocket)
         {
-            var buffer = new byte[4096];
+            var buffer = new byte[8192 * 2];
             while (clientWebSocket.State == WebSocketState.Open)
             {
-                //Console.WriteLine("\n[CLIENT] Recebido um novo evento.");
-
                 var result = await clientWebSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
                 var message = Encoding.UTF8.GetString(buffer, 0, result.Count);
 
@@ -151,44 +165,45 @@ namespace Alduin.Core.Services.CustomerService
                 {
                     if (result.MessageType == WebSocketMessageType.Close)
                     {
-                        Console.WriteLine("[CLIENT] [AVISO] Web Socket da API fechou.\n");
-                        await openAiWebSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None);
-                        break;
-                    }
-                    else if (string.IsNullOrWhiteSpace(message))
-                    {
-                        Console.WriteLine("[CLIENT] [AVISO] Mensagem está vazia.\n");
-                    }
-                    else if (openAiWebSocket.State != WebSocketState.Open)
-                    {
-                        Console.WriteLine("[CLIENT] [AVISO] Web Socket da Open AI fechou.\n");
-                        await clientWebSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None);
-                        break;
-                    }
-                    else
-                    {
-                        //Console.WriteLine($"[CLIENT] Evento: {message}\n");
+                        Console.WriteLine("[CLIENT] Web Socket da API foi fechado.");
 
-                        using (var doc = JsonDocument.Parse(message))
+                        if (openAiWebSocket.State == WebSocketState.Open)
+                            await openAiWebSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None);
+
+                        break;
+                    }
+
+                    if (openAiWebSocket.State != WebSocketState.Open)
+                    {
+                        Console.WriteLine("[CLIENT] Web Socket da Open AI fechou. Fechando WS do Client");
+
+                        if (clientWebSocket.State == WebSocketState.Open)
+                            await clientWebSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None);
+
+                        break;
+                    }
+
+                    if (!TryParseJson(message, out var document) || document == null)
+                        continue;
+
+                    var root = document.RootElement;
+                    var eventType = root.GetProperty("event").GetString();
+
+                    if (eventType == "start")
+                    {
+                        _streamId = root.GetProperty("streamSid").GetString();
+
+                    }
+                    else if (eventType == "media")
+                    {
+                        var base64Audio = root.GetProperty("media").GetProperty("payload").GetString();
+
+                        var audio = new
                         {
-                            var root = doc.RootElement;
-                            var eventType = root.GetProperty("event").GetString();
-
-                            if (eventType == "start")
-                            {
-                                _streamId = root.GetProperty("streamSid").GetString();
-                            }
-                            else if (eventType == "media")
-                            {
-                                var base64Audio = root.GetProperty("media").GetProperty("payload").GetString();
-                                var audio = new
-                                {
-                                    type = "input_audio_buffer.append",
-                                    audio = base64Audio
-                                };
-                                await SendWebSocketMessage(openAiWebSocket, audio);
-                            }
-                        }
+                            type = "input_audio_buffer.append",
+                            audio = base64Audio
+                        };
+                        await SendWebSocketMessage(openAiWebSocket, audio);
                     }
                 }
                 catch(Exception ex)
@@ -223,23 +238,19 @@ namespace Alduin.Core.Services.CustomerService
                 cancellationToken: CancellationToken.None
             );
         }
-    }
 
-    public class MediaEvent
-    {
-        [JsonPropertyName("event")]
-        public string Event => "media";
-
-        [JsonPropertyName("streamSid")]
-        public string StreamSid { get; set; }
-
-        [JsonPropertyName("media")]
-        public MediaPayload Media { get; set; }
-    }
-
-    public class MediaPayload
-    {
-        [JsonPropertyName("payload")]
-        public string Payload { get; set; }
+        private bool TryParseJson(string json, out JsonDocument? document)
+        {
+            try
+            {
+                document = JsonDocument.Parse(json);
+                return true;
+            }
+            catch
+            {
+                document = null;
+                return false;
+            }
+        }
     }
 }
