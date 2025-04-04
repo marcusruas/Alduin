@@ -12,7 +12,6 @@ namespace Alduin.Core.Models.Configs
         public string ApiKey { get; set; }
         public OpenAIModels Models { get; set; }
         public OpenAIPrompts Prompts { get; set; }
-        public dynamic[] Functions { get; set; }
     }
 
     public class OpenAIModels

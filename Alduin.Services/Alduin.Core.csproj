@@ -15,7 +15,7 @@
 	</ItemGroup>
 
     <ItemGroup>
-      <None Update="Prompts\OperatorPrompt.txt">
+      <None Update="Models\Configs\Prompts\OperatorPrompt.txt">
         <CopyToOutputDirectory>Always</CopyToOutputDirectory>
       </None>
     </ItemGroup>
