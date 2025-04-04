@@ -106,21 +106,13 @@ namespace Alduin.Core.Services.CustomerService
                 {
                     if (result.MessageType == WebSocketMessageType.Close)
                     {
-                        Console.WriteLine("[OPEN AI] Web Socket da Open AI foi fechado.");
-
-                        if (clientWebSocket.State == WebSocketState.Open)
-                            await clientWebSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None);
-
+                        await CloseWebSocket(openAiWebSocket, "API");
                         break;
                     }
 
                     if (clientWebSocket.State != WebSocketState.Open)
                     {
-                        Console.WriteLine("[OPEN AI] Web Socket do Client foi fechado. Fechando WS da Open AI");
-
-                        if (openAiWebSocket.State == WebSocketState.Open)
-                            await openAiWebSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None);
-
+                        await CloseWebSocket(openAiWebSocket, "Open AI");
                         break;
                     }
 
@@ -165,21 +157,13 @@ namespace Alduin.Core.Services.CustomerService
                 {
                     if (result.MessageType == WebSocketMessageType.Close)
                     {
-                        Console.WriteLine("[CLIENT] Web Socket da API foi fechado.");
-
-                        if (openAiWebSocket.State == WebSocketState.Open)
-                            await openAiWebSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None);
-
+                        await CloseWebSocket(openAiWebSocket, "Open AI");
                         break;
                     }
 
                     if (openAiWebSocket.State != WebSocketState.Open)
                     {
-                        Console.WriteLine("[CLIENT] Web Socket da Open AI fechou. Fechando WS do Client");
-
-                        if (clientWebSocket.State == WebSocketState.Open)
-                            await clientWebSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None);
-
+                        await CloseWebSocket(clientWebSocket, "API");
                         break;
                     }
 
@@ -251,6 +235,14 @@ namespace Alduin.Core.Services.CustomerService
                 document = null;
                 return false;
             }
+        }
+
+        private async Task CloseWebSocket(WebSocket websocket, string webSocketName = "Default")
+        {
+            Console.WriteLine("Closing WebSocket {0}", webSocketName);
+
+            if (websocket.State == WebSocketState.Open)
+                await websocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None);
         }
     }
 }
