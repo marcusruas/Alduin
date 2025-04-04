@@ -77,6 +77,28 @@ namespace Alduin.Core.Services.CustomerService
                 type = "conversation.item.create",
                 item = new
                 {
+                    tools = new[]
+                    {
+                        new
+                        {
+                            type = "function",
+                            name = "consulta_via_cep",
+                            description = "Consulta informações de endereço usando o ViaCEP com base no CEP fornecido.",
+                            parameters = new
+                            {
+                                type = "object",
+                                properties = new
+                                {
+                                    cep = new
+                                    {
+                                        type = "string",
+                                        description = "O CEP a ser consultado, no formato '12345678'."
+                                    }
+                                },
+                                required = new[] { "cep" }
+                            }
+                        },
+                    },
                     type = "message",
                     role = "user",
                     content = new[]
@@ -101,6 +123,8 @@ namespace Alduin.Core.Services.CustomerService
             {
                 var result = await openAiWebSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
                 var message = Encoding.UTF8.GetString(buffer, 0, result.Count);
+
+                Console.WriteLine("EVENTO: {0}, {1}", JsonSerializer.Serialize(result), message);
 
                 try
                 {
@@ -136,6 +160,40 @@ namespace Alduin.Core.Services.CustomerService
                         };
 
                         await SendWebSocketMessage(clientWebSocket, audioDelta);
+                    }
+
+                    if (eventType == "response.done")
+                    {
+                        var outputObjects = root.GetProperty("response").GetProperty("output");
+
+                        if (outputObjects.GetArrayLength() <= 0)
+                            continue;
+
+                        var outputObject = outputObjects[0];
+                        var type = outputObject.GetProperty("type").GetString();
+
+                        if (type == "function_call" && outputObject.GetProperty("name").GetString() == "consulta_via_cep")
+                        {
+                            var callId = outputObject.GetProperty("call_id").GetString();
+                            Console.WriteLine("Chamando CEP");
+                            var arguments = JsonDocument.Parse(outputObject.GetProperty("arguments").GetString());
+                            var resultCep = await ConsultarViaCepAsync(arguments.RootElement.GetProperty("cep").GetString());
+                            Console.WriteLine("Resultado do CEP: " + resultCep);
+
+                            var conversationItem = new
+                            {
+                                type = "conversation.item.create",
+                                item = new
+                                {
+                                    type = "function_call_output",
+                                    call_id = callId,
+                                    output = resultCep
+                                }
+                            };
+
+                            await SendWebSocketMessage(openAiWebSocket, conversationItem);
+                            await SendWebSocketMessage(openAiWebSocket, new { type = "response.create" });
+                        }
                     }
                 }
                 catch(Exception ex)
@@ -176,7 +234,6 @@ namespace Alduin.Core.Services.CustomerService
                     if (eventType == "start")
                     {
                         _streamId = root.GetProperty("streamSid").GetString();
-
                     }
                     else if (eventType == "media")
                     {
@@ -243,6 +300,22 @@ namespace Alduin.Core.Services.CustomerService
 
             if (websocket.State == WebSocketState.Open)
                 await websocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None);
+        }
+
+        public async Task<string> ConsultarViaCepAsync(string cep)
+        {
+            using (var httpClient = new HttpClient())
+            {
+                var response = await httpClient.GetAsync($"https://viacep.com.br/ws/{cep}/json/");
+                if (response.IsSuccessStatusCode)
+                {
+                    return await response.Content.ReadAsStringAsync();
+                }
+                else
+                {
+                    return $"Erro ao consultar o ViaCEP: {response.StatusCode}";
+                }
+            }
         }
     }
 }
