@@ -10,6 +10,6 @@ namespace Alduin.Core.Services.PhoneCalls
     public interface IPhoneCallsService
     {
         Task StartPhoneCall(string callSid);
-        Task<AIResponse> GenerateResponseFromAssistant(string callSid, string userRecordingUrl);
+        //Task<AIResponse> GenerateResponseFromAssistant(string callSid, string userRecordingUrl);
     }
 }

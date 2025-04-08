@@ -17,4 +17,12 @@
     <ProjectReference Include="..\Alduin.Services\Alduin.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Update="OpenAIEvents.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>

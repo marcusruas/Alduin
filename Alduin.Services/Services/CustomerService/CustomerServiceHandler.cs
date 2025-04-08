@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using Alduin.Core.Helpers;
 using Alduin.Core.Models.AI;
 using Alduin.Core.Models.Configs;
+using Alduin.Core.Models.Configs.OpenAI;
 using static Alduin.Core.Helpers.JsonDocumentHelper;
 
 namespace Alduin.Core.Services.CustomerService
@@ -55,13 +56,8 @@ namespace Alduin.Core.Services.CustomerService
 
         private async Task InitializeOpenAISession(ClientWebSocket openAiWebSocket)
         {
-            string operatorPrompt = GetOperatorPrompt();
-
-            var sessionUpdate = OpenAIEvents.SessionUpdate(operatorPrompt);
-            await SendWebSocketMessage(openAiWebSocket, sessionUpdate);
-
-            var initialConversationItem = OpenAIEvents.StartConversation(operatorPrompt);
-            await SendWebSocketMessage(openAiWebSocket, initialConversationItem, true);
+            await SendWebSocketMessage(openAiWebSocket, _settings.OpenAISettings.Events.SessionUpdate);
+            await SendWebSocketMessage(openAiWebSocket, _settings.OpenAISettings.Events.StartConversation, true);
         }
 
         private async Task HandleOpenAIWebSocket(ClientWebSocket openAiWebSocket, WebSocket clientWebSocket)
@@ -71,6 +67,8 @@ namespace Alduin.Core.Services.CustomerService
             {
                 var result = await openAiWebSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
                 var message = Encoding.UTF8.GetString(buffer, 0, result.Count);
+
+                Console.WriteLine(message);
 
                 try
                 {
@@ -93,17 +91,8 @@ namespace Alduin.Core.Services.CustomerService
 
                     if (eventType == "response.audio.delta" && !string.IsNullOrWhiteSpace(_streamId))
                     {
-                        var audioDelta = new
-                        {
-                            @event = "media",
-                            streamSid = _streamId,
-                            media = new
-                            {
-                                payload = root.GetStringProperty("delta")
-                            }
-                        };
-
-                        await SendWebSocketMessage(clientWebSocket, audioDelta);
+                        var deltaEvent = OpenAIEventsFactory.BuildDeltaEvent(_streamId, root.GetStringProperty("delta"));
+                        await SendWebSocketMessage(clientWebSocket, deltaEvent);
                     }
 
                     if (eventType == "response.done")
@@ -191,17 +180,7 @@ namespace Alduin.Core.Services.CustomerService
             }
         }
 
-        private string GetOperatorPrompt()
-        {
-            var promptsFolder = Path.Combine(AppContext.BaseDirectory, "Models", "Configs", "Prompts");
-            string promptPath = Path.Combine(promptsFolder, "OperatorPrompt.txt");
-
-            if (!File.Exists(promptPath))
-                throw new Exception("Prompt not found");
-
-            var operatorPrompt = File.ReadAllLines(promptPath, Encoding.UTF8);
-            return string.Join(' ', operatorPrompt.Where(x => !string.IsNullOrWhiteSpace(x)));
-        }
+        #region OPEN AI FUNCTION HANDLING
 
         private async Task SendResponseToFunction(WebSocket openAiWebSocket, string? callId, object response)
         {
@@ -211,22 +190,37 @@ namespace Alduin.Core.Services.CustomerService
                 return;
             }
 
-            var conversationItem = new
-            {
-                type = "conversation.item.create",
-                item = new
-                {
-                    type = "function_call_output",
-                    call_id = callId,
-                    output = JsonSerializer.Serialize(response)
-                }
-            };
+            var conversationItem = OpenAIEventsFactory.BuildFunctionResponseEvent(callId, response);
             await SendWebSocketMessage(openAiWebSocket, conversationItem, true);
         }
 
+        public async Task<string> ConsultarViaCepAsync(string cep)
+        {
+            var httpClient = _httpClientFactory.CreateClient();
+            var response = await httpClient.GetAsync($"https://viacep.com.br/ws/{cep}/json/");
+            if (response.IsSuccessStatusCode)
+            {
+                return await response.Content.ReadAsStringAsync();
+            }
+            else
+            {
+                return $"Erro ao consultar o ViaCEP: {response.StatusCode}";
+            }
+        }
+
+        #endregion
+
+        #region WEB SOCKET HELPERS
+
         private async Task SendWebSocketMessage(WebSocket websocket, object message, bool requestResponseFromEvent = false)
         {
-            string json = JsonSerializer.Serialize(message);
+            string json;
+
+            if (message is string cast)
+                json = cast;
+            else
+                json = JsonSerializer.Serialize(message);
+
             var bytes = Encoding.UTF8.GetBytes(json);
 
             await websocket.SendAsync(
@@ -248,18 +242,6 @@ namespace Alduin.Core.Services.CustomerService
                 await websocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None);
         }
 
-        public async Task<string> ConsultarViaCepAsync(string cep)
-        {
-            var httpClient = _httpClientFactory.CreateClient();
-            var response = await httpClient.GetAsync($"https://viacep.com.br/ws/{cep}/json/");
-            if (response.IsSuccessStatusCode)
-            {
-                return await response.Content.ReadAsStringAsync();
-            }
-            else
-            {
-                return $"Erro ao consultar o ViaCEP: {response.StatusCode}";
-            }
-        }
+        #endregion
     }
 }

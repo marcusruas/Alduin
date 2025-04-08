@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Alduin.Core.Models.Configs.OpenAI;
 
 namespace Alduin.Core.Models.Configs
 {

@@ -4,8 +4,8 @@ using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using Alduin.Core.Models.Configs;
+using Alduin.Core.Models.Configs.OpenAI;
 using Alduin.Core.Services.CustomerService;
-using Alduin.Core.Services.OpenAI;
 using Alduin.Core.Services.PhoneCalls;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
@@ -21,6 +21,8 @@ builder.Services.AddMemoryCache();
 
 var settings = new GeneralSettings();
 builder.Configuration.GetSection("GeneralSettings").Bind(settings);
+settings.OpenAISettings.Events = OpenAIEventsFactory.CreateEvents();
+
 builder.Services.AddSingleton(settings);
 
 builder.Services.AddHttpClient("Twillio", (serviceProvider, client) =>
@@ -29,7 +31,6 @@ builder.Services.AddHttpClient("Twillio", (serviceProvider, client) =>
     client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", token);
 });
 
-builder.Services.AddScoped<IOpenAIService, OpenAIService>();
 builder.Services.AddScoped<IPhoneCallsService, PhoneCallsService>();
 builder.Services.AddSingleton<ICustomerServiceHandler, CustomerServiceHandler>();
 

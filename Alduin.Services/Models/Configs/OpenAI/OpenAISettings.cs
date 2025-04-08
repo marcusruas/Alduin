@@ -4,14 +4,14 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Alduin.Core.Models.Configs
+namespace Alduin.Core.Models.Configs.OpenAI
 {
     public class OpenAISettings
     {
         public string RealtimeWebSocketUrl { get; set; }
         public string ApiKey { get; set; }
         public OpenAIModels Models { get; set; }
-        public OpenAIPrompts Prompts { get; set; }
+        public OpenAIEvents Events { get; set; }
     }
 
     public class OpenAIModels
@@ -21,10 +21,9 @@ namespace Alduin.Core.Models.Configs
         public string ChatModel { get; set; }
     }
 
-    public class OpenAIPrompts
+    public class OpenAIEvents
     {
-        public string AnalyzeAudioSystemPrompt { get; set; }
-        public string AnalyzeAudioRequestPrompt { get; set; }
-        public string GreetingsPrompt { get; set; }
+        public string SessionUpdate { get; set; }
+        public string StartConversation { get; set; }
     }
 }
