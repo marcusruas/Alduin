@@ -38,7 +38,25 @@ namespace Alduin.Core.Helpers
 
             try
             {
-                return element.GetProperty(property).GetString();
+                if (element.TryGetProperty(property, out var result))
+                    return result.GetString();
+                return null;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        public static int? GetIntProperty(this JsonElement element, string property)
+        {
+            if (element.ValueKind == JsonValueKind.Null)
+                return null;
+
+            try
+            {
+                var result = element.GetStringProperty(property);
+                return int.Parse(result);
             }
             catch
             {
