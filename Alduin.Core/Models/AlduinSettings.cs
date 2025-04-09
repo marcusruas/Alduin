@@ -34,6 +34,26 @@ namespace Alduin
         public string WebSocketUrl { get; set; } = "/ws/customer-service";
 
         internal const string OPEN_AI_WEBSOCKET_URL = "wss://api.openai.com/v1/realtime?model={0}";
+        internal void EnsureIsValid()
+        {
+            if (string.IsNullOrWhiteSpace(OpenAIApiKey))
+                throw new ArgumentException("OpenAIApiKey is required and cannot be empty.");
+
+            if (string.IsNullOrWhiteSpace(OperatorInstructions))
+                throw new ArgumentException("OperatorInstructions is required and cannot be empty.");
+
+            if (string.IsNullOrWhiteSpace(RealtimeModel))
+                throw new ArgumentException("RealtimeModel cannot be null or empty.");
+
+            if (string.IsNullOrWhiteSpace(AIVoice))
+                throw new ArgumentException("AIVoice cannot be null or empty.");
+
+            if (!IncomingCallsEndpointUrl.StartsWith("/"))
+                throw new ArgumentException("IncomingCallsEndpointUrl must start with '/'.");
+
+            if (!WebSocketUrl.StartsWith("/"))
+                throw new ArgumentException("WebSocketUrl must start with '/'.");
+        }
 
     }
 }

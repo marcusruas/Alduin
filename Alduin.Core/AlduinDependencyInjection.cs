@@ -15,6 +15,7 @@ namespace Alduin
                 OperatorInstructions = ""
             };
             alduinConfiguration.Invoke(settings);
+            settings.EnsureIsValid();
             services.AddSingleton(settings);
 
             if (settings.UseFunctions && configureFunctions == null)
@@ -35,6 +36,7 @@ namespace Alduin
             if (settings == null)
                 throw new ArgumentException("'Alduin' Section was not found in IConfiguration. Make sure you've added the configuration section properly in your appsettings.");
 
+            settings.EnsureIsValid();
             services.AddSingleton(settings);
 
             if (settings.UseFunctions && configureFunctions == null)
