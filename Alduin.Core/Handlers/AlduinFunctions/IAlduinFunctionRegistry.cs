@@ -1,0 +1,10 @@
+﻿using System.Text.Json;
+
+namespace Alduin.Core.Handlers.AlduinFunctions
+{
+    public interface IAlduinFunctionRegistry
+    {
+        public void Register<TArgs>(string name, Func<TArgs, Task<object>> handler);
+        public bool TryGet(string name, out Func<JsonElement, Task<object>>? handler);
+    }
+}

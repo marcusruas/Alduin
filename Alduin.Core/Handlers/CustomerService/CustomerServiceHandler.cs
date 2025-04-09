@@ -5,18 +5,22 @@ using System.Text;
 using Alduin.Core.Helpers;
 using Alduin.Models;
 using Microsoft.Extensions.Caching.Memory;
+using Alduin.Core.Handlers.AlduinFunctions;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace Alduin
 {
     internal class CustomerServiceHandler : ICustomerServiceHandler
     {
-        public CustomerServiceHandler(AlduinSettings settings, IMemoryCache cache, ILogger<CustomerServiceHandler> logger)
+        public CustomerServiceHandler(IAlduinFunctionRegistry functions, AlduinSettings settings, IMemoryCache cache, ILogger<CustomerServiceHandler> logger)
         {
+            _functions = functions;
             _settings = settings;
             _cache = cache;
             _logger = logger;
         }
 
+        private readonly IAlduinFunctionRegistry _functions;
         private readonly AlduinSettings _settings;
         private readonly IMemoryCache _cache;
         private readonly ILogger<CustomerServiceHandler> _logger;
@@ -121,14 +125,24 @@ namespace Alduin
 
                         var type = outputObject.Value.GetStringProperty("type");
 
-                        //if (type == "function_call" && outputObject.GetStringProperty("name") == "consulta_via_cep")
-                        //{
-                        //    var callId = outputObject.GetStringProperty("call_id");
-                        //    var arguments = JsonDocument.Parse(outputObject.GetStringProperty("arguments"));
-                        //    var resultCep = await ConsultarViaCepAsync(arguments.RootElement.GetProperty("cep").GetString());
+                        if (type == "function_call")
+                        {
+                            var functionName = outputObject.GetStringProperty("name");
+                            var arguments = outputObject.Value.GetProperty("arguments");
 
-                        //    await SendResponseToFunction(openAiWebSocket, callId, resultCep);
-                        //}
+                            if (_functions.TryGet(functionName, out var handler))
+                            {
+                                var callId = outputObject.GetStringProperty("call_id");
+                                var functionResult = await handler(arguments);
+
+                                var response =  OpenAIEventsBuilder.BuildFunctionResponseEvent(callId, functionResult);
+                                await SendWebSocketMessage(openAiWebSocket, response, true);
+                            }
+                            else
+                            {
+                                _logger.LogError("Function {function} was not found in the registry.", functionName);
+                            }
+                        }
                     }
                 }
                 catch (Exception ex)

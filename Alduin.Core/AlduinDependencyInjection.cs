@@ -1,11 +1,12 @@
-﻿using Twilio.TwiML;
+﻿using Alduin.Core.Handlers.AlduinFunctions;
+using Twilio.TwiML;
 using Twilio.TwiML.Voice;
 
 namespace Alduin
 {
     public static class AlduinDependencyInjection
     {
-        public static IServiceCollection AddAlduin(this IServiceCollection services, Action<AlduinSettings> alduinConfiguration)
+        public static IServiceCollection AddAlduin(this IServiceCollection services, Action<AlduinSettings> alduinConfiguration, Action<IAlduinFunctionRegistry>? configureFunctions = null)
         {
             var settings = new AlduinSettings()
             {
@@ -13,14 +14,24 @@ namespace Alduin
                 OperatorInstructions = ""
             };
             alduinConfiguration.Invoke(settings);
-
             services.AddSingleton(settings);
+
+            if (settings.UseFunctions)
+            {
+                if (settings.UseFunctions && configureFunctions == null)
+                    throw new ArgumentException("If you've set the AlduinSettings.UseFunctions to true, you must provide the functions");
+
+                var registry = new AlduinFunctionRegistry();
+                configureFunctions?.Invoke(registry);
+                services.AddSingleton<IAlduinFunctionRegistry>(registry);
+            }
+
             services.AddSingleton<ICustomerServiceHandler, CustomerServiceHandler>();
 
             return services;
         }
 
-        public static IServiceCollection AddAlduin(this IServiceCollection services, IConfiguration configuration)
+        public static IServiceCollection AddAlduin(this IServiceCollection services, IConfiguration configuration, Action<IAlduinFunctionRegistry>? configureFunctions = null)
         {
             var settings = configuration.GetSection("Alduin").Get<AlduinSettings>();
 
@@ -28,6 +39,17 @@ namespace Alduin
                 throw new ArgumentException("'Alduin' Section was not found in IConfiguration. Make sure you've added the configuration section properly in your appsettings.");
 
             services.AddSingleton(settings);
+
+            if (settings.UseFunctions)
+            {
+                if (settings.UseFunctions && configureFunctions == null)
+                    throw new ArgumentException("If you've set the AlduinSettings.UseFunctions to true, you must provide the functions");
+
+                var registry = new AlduinFunctionRegistry();
+                configureFunctions?.Invoke(registry);
+                services.AddSingleton<IAlduinFunctionRegistry>(registry);
+            }
+
             services.AddSingleton<ICustomerServiceHandler, CustomerServiceHandler>();
 
             return services;
