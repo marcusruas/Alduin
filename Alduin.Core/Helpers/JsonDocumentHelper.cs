@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 
 namespace Alduin.Core.Helpers
 {
-    public static class JsonDocumentHelper
+    internal static class JsonDocumentHelper
     {
         public static bool TryParseToJson(this string json, out JsonElement? root)
         {

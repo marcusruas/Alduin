@@ -9,7 +9,7 @@ using System.Threading.Tasks;
 
 namespace Alduin.Core.Helpers
 {
-    public class JsonConverterExpandoObject : JsonConverter<ExpandoObject>
+    internal class JsonConverterExpandoObject : JsonConverter<ExpandoObject>
     {
         public override ExpandoObject Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
             => JsonSerializer.Deserialize<Dictionary<string, object>>(ref reader, options)
@@ -19,7 +19,7 @@ namespace Alduin.Core.Helpers
             => JsonSerializer.Serialize(writer, (object)value, options);
     }
 
-    public static class ExpandoExtensions
+    internal static class ExpandoExtensions
     {
         public static ExpandoObject ToExpando(this IDictionary<string, object> dictionary)
         {
