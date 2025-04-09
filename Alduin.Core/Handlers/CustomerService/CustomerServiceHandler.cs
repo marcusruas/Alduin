@@ -27,17 +27,8 @@ namespace Alduin
 
         public async Task HandleAsync(HttpContext httpContext)
         {
-            var callSid = httpContext.Request.Query["CallSid"].ToString();
-
-            if (string.IsNullOrEmpty(callSid))
-            {
-                httpContext.Response.StatusCode = 400;
-                await httpContext.Response.WriteAsync("Missing CallSid");
-                return;
-            }
-
-            string sidKey = $"Alduin_{callSid}";
-            _cache.Set(sidKey, new CustomerServiceCallSettings(), TimeSpan.FromHours(2));
+            string callKey = $"Alduin_{Guid.NewGuid()}";
+            _cache.Set(callKey, new CustomerServiceCallSettings(), TimeSpan.FromHours(2));
 
             using var clientWebSocket = await httpContext.WebSockets.AcceptWebSocketAsync();
             using var openAiWebSocket = new ClientWebSocket();
@@ -55,8 +46,8 @@ namespace Alduin
 
             var wsHandlers = new Task[]
             {
-                HandleOpenAIWebSocket(sidKey, openAiWebSocket, clientWebSocket),
-                HandleClientWebSocket(sidKey, clientWebSocket, openAiWebSocket)
+                HandleOpenAIWebSocket(callKey, openAiWebSocket, clientWebSocket),
+                HandleClientWebSocket(callKey, clientWebSocket, openAiWebSocket)
             };
 
             await Task.WhenAll(wsHandlers);
@@ -183,7 +174,8 @@ namespace Alduin
 
                     if (eventType == "start")
                     {
-                        _cache.Get<CustomerServiceCallSettings>(cacheKey).StreamId = documentRoot.GetStringProperty("streamSid");
+                        _cache.Get<CustomerServiceCallSettings>(cacheKey).StreamId = documentRoot.Value.GetProperty("start").GetStringProperty("streamSid");
+                        _cache.Get<CustomerServiceCallSettings>(cacheKey).CallSid = documentRoot.Value.GetProperty("start").GetStringProperty("callSid");
                     }
 
                     if (eventType == "media")

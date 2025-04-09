@@ -6,7 +6,6 @@
 # dotenv files
 .env
 
-Throat/
 appsettings.Development.json
 
 # User-specific files

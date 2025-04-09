@@ -1,6 +1,7 @@
 ﻿using Alduin.Core.Handlers.AlduinFunctions;
 using Twilio.TwiML;
 using Twilio.TwiML.Voice;
+using Stream = Twilio.TwiML.Voice.Stream;
 
 namespace Alduin
 {
@@ -16,16 +17,12 @@ namespace Alduin
             alduinConfiguration.Invoke(settings);
             services.AddSingleton(settings);
 
-            if (settings.UseFunctions)
-            {
-                if (settings.UseFunctions && configureFunctions == null)
-                    throw new ArgumentException("If you've set the AlduinSettings.UseFunctions to true, you must provide the functions");
+            if (settings.UseFunctions && configureFunctions == null)
+                throw new ArgumentException("If you've set the AlduinSettings.UseFunctions to true, you must provide the functions");
 
-                var registry = new AlduinFunctionRegistry();
-                configureFunctions?.Invoke(registry);
-                services.AddSingleton<IAlduinFunctionRegistry>(registry);
-            }
-
+            var registry = new AlduinFunctionRegistry();
+            configureFunctions?.Invoke(registry);
+            services.AddSingleton<IAlduinFunctionRegistry>(registry);
             services.AddSingleton<ICustomerServiceHandler, CustomerServiceHandler>();
 
             return services;
@@ -40,16 +37,12 @@ namespace Alduin
 
             services.AddSingleton(settings);
 
-            if (settings.UseFunctions)
-            {
-                if (settings.UseFunctions && configureFunctions == null)
-                    throw new ArgumentException("If you've set the AlduinSettings.UseFunctions to true, you must provide the functions");
+            if (settings.UseFunctions && configureFunctions == null)
+                throw new ArgumentException("If you've set the AlduinSettings.UseFunctions to true, you must provide the functions");
 
-                var registry = new AlduinFunctionRegistry();
-                configureFunctions?.Invoke(registry);
-                services.AddSingleton<IAlduinFunctionRegistry>(registry);
-            }
-
+            var registry = new AlduinFunctionRegistry();
+            configureFunctions?.Invoke(registry);
+            services.AddSingleton<IAlduinFunctionRegistry>(registry);
             services.AddSingleton<ICustomerServiceHandler, CustomerServiceHandler>();
 
             return services;
@@ -64,12 +57,9 @@ namespace Alduin
 
             app.MapPost(settings.IncomingCallsEndpointUrl, async (HttpContext context) =>
             {
-                var form = await context.Request.ReadFormAsync();
-                var callSid = form["CallSid"].ToString();
-
                 var response = new VoiceResponse();
                 var connect = new Connect();
-                connect.Stream(url: $"wss://{context.Request.Host}{settings.WebSocketUrl}?CallSid={callSid}");
+                connect.Stream(url: $"wss://{context.Request.Host}{settings.WebSocketUrl}");
 
                 response.Append(connect);
 

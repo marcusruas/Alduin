@@ -3,5 +3,6 @@
     public class CustomerServiceCallSettings
     {
         public string? StreamId { get; set; }
+        public string? CallSid { get; set; }
     }
 }
