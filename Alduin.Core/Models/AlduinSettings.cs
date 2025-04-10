@@ -48,10 +48,10 @@ namespace Alduin
             if (string.IsNullOrWhiteSpace(AIVoice))
                 throw new ArgumentException("AIVoice cannot be null or empty.");
 
-            if (!IncomingCallsEndpointUrl.StartsWith("/"))
+            if (!IncomingCallsEndpointUrl.StartsWith('/'))
                 throw new ArgumentException("IncomingCallsEndpointUrl must start with '/'.");
 
-            if (!WebSocketUrl.StartsWith("/"))
+            if (!WebSocketUrl.StartsWith('/'))
                 throw new ArgumentException("WebSocketUrl must start with '/'.");
         }
 

@@ -57,7 +57,7 @@ namespace Alduin
             if (settings == null)
                 throw new ArgumentException("AlduinSettings was not registered. Make sure to call services.AddAlduin(...) before using AddAlduin on the application.");
 
-            app.MapPost(settings.IncomingCallsEndpointUrl, async (HttpContext context) =>
+            app.MapPost(settings.IncomingCallsEndpointUrl, (HttpContext context) =>
             {
                 var response = new VoiceResponse();
                 var connect = new Connect();
