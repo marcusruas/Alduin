@@ -32,6 +32,10 @@ namespace Alduin
         /// The Web Socket endpoint URL that will be used for redirecting any incoming calls from Twillio.
         /// </summary>
         public string WebSocketUrl { get; set; } = "/ws/customer-service";
+        /// <summary>
+        /// Sets the time in seconds for the AI to finish the call in case the user is inactive or havent spoken in a while
+        /// </summary>
+        public int ClientInactivityTimeout { get; set; } = 600;
 
         internal const string OPEN_AI_WEBSOCKET_URL = "wss://api.openai.com/v1/realtime?model={0}";
         internal void EnsureIsValid()

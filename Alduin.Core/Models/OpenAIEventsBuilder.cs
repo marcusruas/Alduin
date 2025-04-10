@@ -23,15 +23,22 @@ namespace Alduin.Models
                     Converters = { new JsonConverterExpandoObject() },
                     PropertyNameCaseInsensitive = true
                 };
-                functions = JsonSerializer.Deserialize<ExpandoObject[]>(jsonFunctions, functionsSerializerOptions) ?? throw new ArgumentException("'alduin.functions.json' file is in the wrong format.");
+                var desserializedFunctions = JsonSerializer.Deserialize<List<ExpandoObject>>(jsonFunctions, functionsSerializerOptions);
+
+                if (desserializedFunctions == null)
+                    throw new ArgumentException("'alduin.functions.json' file is in the wrong format.");
+
+                desserializedFunctions.Add(BuildHangupFunction());
+
+                functions = desserializedFunctions;
             }
 
             var sessionUpdate = new SessionConfigsEvent(
                 type: "session.update",
                 session: new SessionContent(
-                    tools: settings.UseFunctions ? functions : [],
+                    tools: settings.UseFunctions ? functions : [BuildHangupFunction()],
                     voice: settings.AIVoice,
-                    instructions: settings.OperatorInstructions,
+                    instructions: settings.OperatorInstructions + HANGUP_PROMPT,
                     turn_detection: new TurnDetection(type: "server_vad"),
                     input_audio_format: "g711_ulaw",
                     output_audio_format: "g711_ulaw",
@@ -88,6 +95,24 @@ namespace Alduin.Models
                 }
             }
         };
+
+        private static ExpandoObject BuildHangupFunction()
+        {
+            dynamic endCallFunction = new ExpandoObject();
+
+            endCallFunction.type = "function";
+            endCallFunction.name = "end_call";
+            endCallFunction.description = "Após todos os critérios definidos nas instruções terem sido satisfeitos e o cliente não apresentar mais dúvidas, encerra a chamada de forma educada.";
+
+            endCallFunction.parameters = new ExpandoObject();
+            endCallFunction.parameters.type = "object";
+            endCallFunction.parameters.properties = new ExpandoObject();
+            endCallFunction.parameters.required = new List<string>();
+
+            return endCallFunction;
+        }
+
+        private const string HANGUP_PROMPT = " You must end the call and trigger the end_call function if any of the following conditions are met: the user has dialed the wrong number or is asking something unrelated to the services you provide; the user explicitly says they have no further questions or that the conversation is over; or the issue has been fully resolved and the user expresses satisfaction or no need for further assistance. Before ending the call, always communicate to the user that the call is about to be closed — using their preferred language, based on how they have been speaking so far. Always be polite and respectful, and make sure the user is not left with unanswered questions. Once you communicate the call is ending, trigger an event of type 'function_call' of type end_call.";
 
         private static bool TryReadFunctionsJson(out string? functions)
         {

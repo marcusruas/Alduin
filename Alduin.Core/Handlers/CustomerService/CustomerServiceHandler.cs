@@ -88,6 +88,11 @@ namespace Alduin
 
                     var eventType = root.GetStringProperty("type");
 
+                    if (eventType == "input_audio_buffer.speech_started")
+                    {
+                        _cache.Get<CustomerServiceCallSettings>(cacheKey).LastClientSpeech = DateTime.UtcNow;
+                    }
+
                     if (eventType == "response.audio.delta")
                     {
                         var streamId = _cache.Get<CustomerServiceCallSettings>(cacheKey).StreamId;
@@ -120,10 +125,18 @@ namespace Alduin
                         {
                             var functionName = outputObject.GetStringProperty("name");
                             var arguments = outputObject.Value.GetProperty("arguments");
+                            var callId = outputObject.GetStringProperty("call_id");
 
-                            if (_functions.TryGet(functionName, out var handler))
+                            if (functionName == "end_call")
                             {
-                                var callId = outputObject.GetStringProperty("call_id");
+                                var response = OpenAIEventsBuilder.BuildFunctionResponseEvent(callId, new { response = "The call will close in around 5 seconds. Warn the user in his language" });
+                                await SendWebSocketMessage(openAiWebSocket, response, true);
+
+                                EndCall(clientWebSocket, openAiWebSocket);
+                            }
+                            else if (_functions.TryGet(functionName, out var handler))
+                            {
+                                
                                 var functionResult = await handler(arguments);
 
                                 var response =  OpenAIEventsBuilder.BuildFunctionResponseEvent(callId, functionResult);
@@ -148,6 +161,11 @@ namespace Alduin
             var buffer = new byte[8192 * 2];
             while (clientWebSocket.State == WebSocketState.Open)
             {
+                if (_cache.Get<CustomerServiceCallSettings>(cacheKey).SecondsSinceLastSpeech >= _settings.ClientInactivityTimeout)
+                {
+                    EndCall(clientWebSocket, openAiWebSocket);
+                }
+
                 var receivedEvent = await clientWebSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
                 var eventContent = Encoding.UTF8.GetString(buffer, 0, receivedEvent.Count);
 
@@ -197,6 +215,17 @@ namespace Alduin
         }
 
         #region WEB SOCKET HELPERS
+
+        private void EndCall(WebSocket clientWebSocket, ClientWebSocket openAiWebSocket)
+        {
+            _ = Task.Run(async () =>
+            {
+                _logger.LogInformation("A call has ended.");
+                await Task.Delay(TimeSpan.FromSeconds(10));
+                await CloseWebSocket(openAiWebSocket, "Open AI");
+                await CloseWebSocket(clientWebSocket, "Client");
+            });
+        }
 
         private async Task SendWebSocketMessage(WebSocket websocket, object message, bool requestResponseFromEvent = false)
         {
