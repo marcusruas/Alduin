@@ -6,5 +6,6 @@ namespace Alduin.Core.Handlers.AlduinFunctions
     {
         public void Register<TArgs>(string name, Func<TArgs, Task<object>> handler);
         public bool TryGet(string name, out Func<JsonElement, Task<object>>? handler);
+        public string MaskInformation(string input, int visibleStart = 3, int visibleEnd = 2);
     }
 }

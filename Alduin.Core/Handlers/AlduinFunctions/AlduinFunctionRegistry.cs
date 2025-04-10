@@ -19,5 +19,17 @@ namespace Alduin.Core.Handlers.AlduinFunctions
         {
             return _handlers.TryGetValue(name, out handler);
         }
+
+        public static string MaskInformation(string input, int visibleStart = 3, int visibleEnd = 2)
+        {
+            if (string.IsNullOrEmpty(input) || input.Length <= visibleStart + visibleEnd)
+                return input;
+
+            string start = input.Substring(0, visibleStart);
+            string end = input.Substring(input.Length - visibleEnd);
+            string middle = new string('*', input.Length - visibleStart - visibleEnd);
+
+            return start + middle + end;
+        }
     }
 }
