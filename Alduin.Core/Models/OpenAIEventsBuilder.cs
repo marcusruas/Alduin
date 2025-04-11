@@ -26,7 +26,7 @@ namespace Alduin.Models
                 var desserializedFunctions = JsonSerializer.Deserialize<List<ExpandoObject>>(jsonFunctions, functionsSerializerOptions);
 
                 if (desserializedFunctions == null)
-                    throw new ArgumentException("'alduin.functions.json' file is in the wrong format.");
+                    throw new ArgumentException($"'{FUNCTIONS_FILE_NAME}' file is in the wrong format.");
 
                 desserializedFunctions.Add(BuildHangupFunction());
 
@@ -96,6 +96,8 @@ namespace Alduin.Models
             }
         };
 
+        public static bool FunctionsFileExists() => File.Exists(Path.Combine(AppContext.BaseDirectory, FUNCTIONS_FILE_NAME));
+
         private static ExpandoObject BuildHangupFunction()
         {
             dynamic endCallFunction = new ExpandoObject();
@@ -112,19 +114,20 @@ namespace Alduin.Models
             return endCallFunction;
         }
 
-        private const string HANGUP_PROMPT = " You must end the call and trigger the end_call function if any of the following conditions are met: the user has dialed the wrong number or is asking something unrelated to the services you provide; the user explicitly says they have no further questions or that the conversation is over; or the issue has been fully resolved and the user expresses satisfaction or no need for further assistance. Before ending the call, always communicate to the user that the call is about to be closed — using their preferred language, based on how they have been speaking so far. Always be polite and respectful, and make sure the user is not left with unanswered questions. Once you communicate the call is ending, trigger an event of type 'function_call' of type end_call.";
-
         private static bool TryReadFunctionsJson(out string? functions)
         {
             functions = null;
-            string fileName = "alduin.functions.json";
-            string filePath = Path.Combine(AppContext.BaseDirectory, fileName);
 
-            if (!File.Exists(filePath))
+            if (!FunctionsFileExists())
                 return false;
+
+            string filePath = Path.Combine(AppContext.BaseDirectory, FUNCTIONS_FILE_NAME);
 
             functions = File.ReadAllText(filePath);
             return true;
         }
+
+        private const string FUNCTIONS_FILE_NAME = "alduin.functions.json";
+        private const string HANGUP_PROMPT = " You must end the call and trigger the end_call function if any of the following conditions are met: the user has dialed the wrong number or is asking something unrelated to the services you provide; the user explicitly says they have no further questions or that the conversation is over; or the issue has been fully resolved and the user expresses satisfaction or no need for further assistance. Before ending the call, always communicate to the user that the call is about to be closed — using their preferred language, based on how they have been speaking so far. Always be polite and respectful, and make sure the user is not left with unanswered questions. Once you communicate the call is ending, trigger an event of type 'function_call' of type end_call.";
     }
 }

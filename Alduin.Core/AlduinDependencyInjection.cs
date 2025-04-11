@@ -1,4 +1,5 @@
 ﻿using Alduin.Core.Handlers.AlduinFunctions;
+using Alduin.Models;
 using Twilio.TwiML;
 using Twilio.TwiML.Voice;
 using Stream = Twilio.TwiML.Voice.Stream;
@@ -18,8 +19,8 @@ namespace Alduin
             settings.EnsureIsValid();
             services.AddSingleton(settings);
 
-            if (settings.UseFunctions && configureFunctions == null)
-                throw new ArgumentException("If you've set the AlduinSettings.UseFunctions to true, you must provide the functions");
+            if (settings.UseFunctions && (configureFunctions == null || !OpenAIEventsBuilder.FunctionsFileExists()))
+                throw new ArgumentException("If you've set the AlduinSettings.UseFunctions to true, you must provide the functions and create the functions json file");
 
             var registry = new AlduinFunctionRegistry();
             configureFunctions?.Invoke(registry);
@@ -39,8 +40,8 @@ namespace Alduin
             settings.EnsureIsValid();
             services.AddSingleton(settings);
 
-            if (settings.UseFunctions && configureFunctions == null)
-                throw new ArgumentException("If you've set the AlduinSettings.UseFunctions to true, you must provide the functions");
+            if (settings.UseFunctions && (configureFunctions == null || !OpenAIEventsBuilder.FunctionsFileExists()))
+                throw new ArgumentException("If you've set the AlduinSettings.UseFunctions to true, you must provide the functions and create the functions json file");
 
             var registry = new AlduinFunctionRegistry();
             configureFunctions?.Invoke(registry);
