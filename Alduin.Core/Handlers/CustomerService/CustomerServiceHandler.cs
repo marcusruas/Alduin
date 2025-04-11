@@ -7,19 +7,22 @@ using Alduin.Models;
 using Microsoft.Extensions.Caching.Memory;
 using Alduin.Core.Handlers.AlduinFunctions;
 using static System.Runtime.InteropServices.JavaScript.JSType;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Alduin
 {
     internal class CustomerServiceHandler : ICustomerServiceHandler
     {
-        public CustomerServiceHandler(IAlduinFunctionRegistry functions, AlduinSettings settings, IMemoryCache cache, ILogger<CustomerServiceHandler> logger)
+        public CustomerServiceHandler(IServiceProvider serviceProvider, IAlduinFunctionRegistry functions, AlduinSettings settings, IMemoryCache cache, ILogger<CustomerServiceHandler> logger)
         {
+            _serviceProvider = serviceProvider;
             _functions = functions;
             _settings = settings;
             _cache = cache;
             _logger = logger;
         }
 
+        private readonly IServiceProvider _serviceProvider;
         private readonly IAlduinFunctionRegistry _functions;
         private readonly AlduinSettings _settings;
         private readonly IMemoryCache _cache;
@@ -137,7 +140,7 @@ namespace Alduin
                             else if (_functions.TryGet(functionName, out var handler))
                             {
                                 
-                                var functionResult = await handler(arguments);
+                                var functionResult = await handler(_serviceProvider, arguments);
 
                                 var response =  OpenAIEventsBuilder.BuildFunctionResponseEvent(callId, functionResult);
                                 await SendWebSocketMessage(openAiWebSocket, response, true);
