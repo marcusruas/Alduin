@@ -74,6 +74,9 @@ namespace Alduin
 
                 try
                 {
+                    if (!string.IsNullOrWhiteSpace(eventContent) && eventContent.Contains("error"))
+                        _logger.LogInformation("[OPEN AI] An error event was received by the web socket: {0}", eventContent);
+
                     if (receivedEvent.MessageType == WebSocketMessageType.Close)
                     {
                         await CloseWebSocket(openAiWebSocket, "Twillio");
@@ -129,6 +132,8 @@ namespace Alduin
                             var functionName = outputObject.GetStringProperty("name");
                             var arguments = outputObject.Value.GetProperty("arguments");
                             var callId = outputObject.GetStringProperty("call_id");
+
+                            _logger.LogInformation("Assistant called function {functionName}. Arguments: {arguments}", functionName, arguments);
 
                             if (functionName == "end_call")
                             {

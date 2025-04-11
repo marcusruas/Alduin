@@ -17,9 +17,9 @@ namespace Alduin
         /// </summary>
         public bool UseFunctions { get; set; } = false;
         /// <summary>
-        /// The model that open AI will use for its web socket. the default is gpt-4o-realtime-preview-2024-10-01.
+        /// The model that open AI will use for its web socket. the default is gpt-4o-realtime-preview-2024-12-17.
         /// </summary>
-        public string RealtimeModel { get; set; } = "gpt-4o-realtime-preview-2024-10-01";
+        public string RealtimeModel { get; set; } = "gpt-4o-realtime-preview-2024-12-17";
         /// <summary>
         /// The type of voice the AI will have. The supported voices are located in the OpenAI Documentation <see cref="https://platform.openai.com/docs/api-reference/audio/createSpeech"/>
         /// </summary>

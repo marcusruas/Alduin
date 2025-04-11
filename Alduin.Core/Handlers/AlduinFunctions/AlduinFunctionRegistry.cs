@@ -10,7 +10,17 @@ namespace Alduin.Core.Handlers.AlduinFunctions
         {
             _handlers[name] = async (IServiceProvider serviceProvider, JsonElement json) =>
             {
-                var args = json.Deserialize<TArgs>()!;
+                TArgs args = default;
+
+                if (json.ValueKind == JsonValueKind.String)
+                {
+                    args = JsonSerializer.Deserialize<TArgs>(json.GetString());
+                }
+                else
+                {
+                    args = json.Deserialize<TArgs>()!;
+                }
+
                 return await handler(serviceProvider, args);
             };
         }
