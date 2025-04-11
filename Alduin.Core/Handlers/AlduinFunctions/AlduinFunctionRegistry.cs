@@ -4,18 +4,18 @@ namespace Alduin.Core.Handlers.AlduinFunctions
 {
     internal class AlduinFunctionRegistry : IAlduinFunctionRegistry
     {
-        private readonly Dictionary<string, Func<JsonElement, Task<object>>> _handlers = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, Func<IServiceProvider, JsonElement, Task<object>>> _handlers = new(StringComparer.OrdinalIgnoreCase);
 
-        public void Register<TArgs>(string name, Func<TArgs, Task<object>> handler)
+        public void Register<TArgs>(string name, Func<IServiceProvider, TArgs, Task<object>> handler)
         {
-            _handlers[name] = async (JsonElement json) =>
+            _handlers[name] = async (IServiceProvider serviceProvider, JsonElement json) =>
             {
                 var args = json.Deserialize<TArgs>()!;
-                return await handler(args);
+                return await handler(serviceProvider, args);
             };
         }
 
-        public bool TryGet(string name, out Func<JsonElement, Task<object>>? handler)
+        public bool TryGet(string name, out Func<IServiceProvider, JsonElement, Task<object>>? handler)
         {
             return _handlers.TryGetValue(name, out handler);
         }
