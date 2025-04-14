@@ -25,11 +25,11 @@ namespace Alduin
         /// </summary>
         public string AIVoice { get; set; } = "echo";
         /// <summary>
-        /// The POST Endpoint URL that will be used for receiving any incoming calls from Twillio.
+        /// The POST Endpoint URL that will be used for receiving any incoming calls from Twilio.
         /// </summary>
         public string IncomingCallsEndpointUrl { get; set; } = "/api/phonecalls/incoming";
         /// <summary>
-        /// The Web Socket endpoint URL that will be used for redirecting any incoming calls from Twillio.
+        /// The Web Socket endpoint URL that will be used for redirecting any incoming calls from Twilio.
         /// </summary>
         public string WebSocketUrl { get; set; } = "/ws/customer-service";
         /// <summary>

@@ -88,7 +88,7 @@ namespace Alduin
 
                     if (receivedEvent.MessageType == WebSocketMessageType.Close)
                     {
-                        await CloseWebSocket(openAiWebSocket, "Twillio");
+                        await CloseWebSocket(openAiWebSocket, "Twilio");
                         break;
                     }
 
@@ -230,7 +230,7 @@ namespace Alduin
                 var receivedEvent = await clientWebSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
                 var eventContent = Encoding.UTF8.GetString(buffer, 0, receivedEvent.Count);
 
-                //_logger.LogDebug("[TWILLIO] Web Socket Event received: {event}. Content: {content}", JsonSerializer.Serialize(receivedEvent), eventContent);
+                _logger.LogDebug("[Twilio] Web Socket Event received: {event}. Content: {content}", JsonSerializer.Serialize(receivedEvent), eventContent);
 
                 try
                 {
@@ -239,7 +239,7 @@ namespace Alduin
                     if (settings == null)
                     {
                         _logger.LogError("Settings for call {cacheKey} was not found", cacheKey);
-                        await CloseWebSocket(clientWebSocket, "Twillio");
+                        await CloseWebSocket(clientWebSocket, "Twilio");
                         continue;
                     }
 
@@ -250,7 +250,7 @@ namespace Alduin
                     }
 
                     if (!string.IsNullOrWhiteSpace(eventContent) && eventContent.Contains("error") || eventContent.Contains("fail"))
-                        _logger.LogInformation("[Twillio] An error event was received by the web socket: {0}", eventContent);
+                        _logger.LogInformation("[Twilio] An error event was received by the web socket: {0}", eventContent);
 
                     if (receivedEvent.MessageType == WebSocketMessageType.Close)
                     {
@@ -260,7 +260,7 @@ namespace Alduin
 
                     if (openAiWebSocket.State != WebSocketState.Open)
                     {
-                        await CloseWebSocket(clientWebSocket, "Twillio");
+                        await CloseWebSocket(clientWebSocket, "Twilio");
                         break;
                     }
 
@@ -300,7 +300,7 @@ namespace Alduin
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Failed to process Twillio Web Socket event. Event details: {content}. Call SID: {cacheKey}", eventContent, cacheKey);
+                    _logger.LogError(ex, "Failed to process Twilio Web Socket event. Event details: {content}. Call SID: {cacheKey}", eventContent, cacheKey);
                 }
             }
         }
