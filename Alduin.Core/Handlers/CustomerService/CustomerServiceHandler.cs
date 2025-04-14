@@ -74,6 +74,15 @@ namespace Alduin
 
                 try
                 {
+                    var settings = _cache.Get<CustomerServiceCallSettings>(cacheKey);
+
+                    if (settings == null)
+                    {
+                        _logger.LogError("Settings for call {callSid} was not found", cacheKey);
+                        await CloseWebSocket(openAiWebSocket, "Open AI");
+                        continue;
+                    }
+
                     if (!string.IsNullOrWhiteSpace(eventContent) && eventContent.Contains("error"))
                         _logger.LogInformation("[OPEN AI] An error event was received by the web socket: {0}", eventContent);
 
@@ -96,12 +105,12 @@ namespace Alduin
 
                     if (eventType == "input_audio_buffer.speech_started")
                     {
-                        _cache.Get<CustomerServiceCallSettings>(cacheKey).LastClientSpeech = DateTime.UtcNow;
+                        settings.LastClientSpeech = DateTime.UtcNow;
                     }
 
                     if (eventType == "response.audio.delta")
                     {
-                        var streamId = _cache.Get<CustomerServiceCallSettings>(cacheKey).StreamId;
+                        var streamId = settings.StreamSid;
 
                         if (!string.IsNullOrWhiteSpace(streamId))
                         {
@@ -169,7 +178,16 @@ namespace Alduin
             var buffer = new byte[8192 * 2];
             while (clientWebSocket.State == WebSocketState.Open)
             {
-                if (_cache.Get<CustomerServiceCallSettings>(cacheKey).SecondsSinceLastSpeech >= _settings.ClientInactivityTimeout)
+                var settings = _cache.Get<CustomerServiceCallSettings>(cacheKey);
+
+                if (settings == null)
+                {
+                    _logger.LogError("Settings for call {callSid} was not found", cacheKey);
+                    await CloseWebSocket(clientWebSocket, "Twillio");
+                    continue;
+                }
+
+                if (settings.SecondsSinceLastSpeech >= _settings.ClientInactivityTimeout)
                 {
                     EndCall(clientWebSocket, openAiWebSocket);
                 }
@@ -200,8 +218,8 @@ namespace Alduin
 
                     if (eventType == "start")
                     {
-                        _cache.Get<CustomerServiceCallSettings>(cacheKey).StreamId = documentRoot.Value.GetProperty("start").GetStringProperty("streamSid");
-                        _cache.Get<CustomerServiceCallSettings>(cacheKey).CallSid = documentRoot.Value.GetProperty("start").GetStringProperty("callSid");
+                        settings.StreamSid = documentRoot.Value.GetProperty("start").GetStringProperty("streamSid");
+                        settings.CallSid = documentRoot.Value.GetProperty("start").GetStringProperty("callSid");
                     }
 
                     if (eventType == "media")
