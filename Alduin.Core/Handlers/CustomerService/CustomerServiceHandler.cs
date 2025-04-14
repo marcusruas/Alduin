@@ -106,17 +106,22 @@ namespace Alduin
                     if (eventType == "input_audio_buffer.speech_started")
                     {
                         settings.LastClientSpeech = DateTime.UtcNow;
+                        await InterruptAssistant(clientWebSocket, openAiWebSocket, settings);
                     }
 
                     if (eventType == "response.audio.delta")
                     {
-                        var streamId = settings.StreamSid;
+                        var deltaEvent = OpenAIEventsBuilder.BuildDeltaEvent(settings.StreamSid, root.GetStringProperty("delta"));
+                        await SendWebSocketMessage(clientWebSocket, deltaEvent);
 
-                        if (!string.IsNullOrWhiteSpace(streamId))
-                        {
-                            var deltaEvent = OpenAIEventsBuilder.BuildDeltaEvent(streamId, root.GetStringProperty("delta"));
-                            await SendWebSocketMessage(clientWebSocket, deltaEvent);
-                        }
+                        if (settings.FirstDeltaFromCurrentResponse == null)
+                            settings.FirstDeltaFromCurrentResponse = settings.LatestTimestamp;
+
+                        var currentAssistant = root.GetStringProperty("item_id");
+                        if (!string.IsNullOrWhiteSpace(currentAssistant))
+                            settings.LastAssistantId = currentAssistant;
+
+                        await SendMark(clientWebSocket, settings);
                     }
 
                     if (eventType == "response.done")
@@ -173,33 +178,80 @@ namespace Alduin
             }
         }
 
+        private async Task InterruptAssistant(WebSocket clientWebSocket, ClientWebSocket openAiWebSocket, CustomerServiceCallSettings settings)
+        {
+            if (!settings.Marks.Any() || settings.FirstDeltaFromCurrentResponse == null)
+                return;
+
+            var elapsedTime = settings.LatestTimestamp - settings.FirstDeltaFromCurrentResponse.Value;
+
+            if (!string.IsNullOrWhiteSpace(settings.LastAssistantId))
+            {
+                await SendWebSocketMessage(openAiWebSocket, new
+                {
+                    type = "conversation.item.truncate",
+                    item_id = settings.LastAssistantId,
+                    content_index = 0,
+                    audio_end_ms = elapsedTime
+                });
+            }
+
+            await SendWebSocketMessage(clientWebSocket, new
+            {
+                @event = "clear",
+                streamSid = settings.StreamSid
+            });
+
+            settings.Marks.Clear();
+            settings.LastAssistantId = null;
+            settings.FirstDeltaFromCurrentResponse = null;
+        }
+
+        private async Task SendMark(WebSocket clientWebSocket, CustomerServiceCallSettings settings)
+        {
+            if (string.IsNullOrWhiteSpace(settings.StreamSid))
+                return;
+
+            await SendWebSocketMessage(clientWebSocket, new
+            {
+                @event = "mark",
+                streamSid = settings.StreamSid,
+                mark = new { name = "responsePart" }
+            });
+
+            settings.Marks.Enqueue("responsePart");
+        }
+
         private async Task HandleClientWebSocket(string cacheKey, WebSocket clientWebSocket, ClientWebSocket openAiWebSocket)
         {
             var buffer = new byte[8192 * 2];
             while (clientWebSocket.State == WebSocketState.Open)
             {
-                var settings = _cache.Get<CustomerServiceCallSettings>(cacheKey);
-
-                if (settings == null)
-                {
-                    _logger.LogError("Settings for call {cacheKey} was not found", cacheKey);
-                    await CloseWebSocket(clientWebSocket, "Twillio");
-                    continue;
-                }
-
-                if (settings.SecondsSinceLastSpeech >= _settings.ClientInactivityTimeout)
-                {
-                    EndCall(clientWebSocket, openAiWebSocket);
-                    continue;
-                }
-
                 var receivedEvent = await clientWebSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
                 var eventContent = Encoding.UTF8.GetString(buffer, 0, receivedEvent.Count);
 
-                _logger.LogDebug("[TWILLIO] Web Socket Event received: {event}. Content: {content}", JsonSerializer.Serialize(receivedEvent), eventContent);
+                //_logger.LogDebug("[TWILLIO] Web Socket Event received: {event}. Content: {content}", JsonSerializer.Serialize(receivedEvent), eventContent);
 
                 try
                 {
+                    var settings = _cache.Get<CustomerServiceCallSettings>(cacheKey);
+                    
+                    if (settings == null)
+                    {
+                        _logger.LogError("Settings for call {cacheKey} was not found", cacheKey);
+                        await CloseWebSocket(clientWebSocket, "Twillio");
+                        continue;
+                    }
+
+                    if (settings.SecondsSinceLastSpeech >= _settings.ClientInactivityTimeout)
+                    {
+                        EndCall(clientWebSocket, openAiWebSocket);
+                        continue;
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(eventContent) && eventContent.Contains("error") || eventContent.Contains("fail"))
+                        _logger.LogInformation("[Twillio] An error event was received by the web socket: {0}", eventContent);
+
                     if (receivedEvent.MessageType == WebSocketMessageType.Close)
                     {
                         await CloseWebSocket(openAiWebSocket, "Open AI");
@@ -220,17 +272,30 @@ namespace Alduin
                     if (eventType == "start")
                     {
                         settings.StreamSid = documentRoot.Value.GetProperty("start").GetStringProperty("streamSid");
+
+                        settings.FirstDeltaFromCurrentResponse = null;
                     }
 
                     if (eventType == "media")
                     {
+                        var mediaObject = documentRoot.Value.GetProperty("media");
+
+                        settings.LatestTimestamp = mediaObject.GetIntProperty("timestamp") ?? 0;
                         var audio = new
                         {
                             type = "input_audio_buffer.append",
-                            audio = documentRoot.Value.GetProperty("media").GetStringProperty("payload")
+                            audio = mediaObject.GetStringProperty("payload")
                         };
 
                         await SendWebSocketMessage(openAiWebSocket, audio);
+                    }
+
+                    if (eventType == "mark")
+                    {
+                        if (settings.Marks.Any())
+                        {
+                            settings.Marks.TryDequeue(out _);
+                        }
                     }
                 }
                 catch (Exception ex)
