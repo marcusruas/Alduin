@@ -190,6 +190,7 @@ namespace Alduin
                 if (settings.SecondsSinceLastSpeech >= _settings.ClientInactivityTimeout)
                 {
                     EndCall(clientWebSocket, openAiWebSocket);
+                    continue;
                 }
 
                 var receivedEvent = await clientWebSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
