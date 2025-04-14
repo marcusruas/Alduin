@@ -30,7 +30,7 @@ namespace Alduin
 
         public async Task HandleAsync(HttpContext httpContext)
         {
-            string callKey = $"Alduin_{Guid.NewGuid()}";
+            string callKey = $"AlduinCall_{Guid.NewGuid()}";
             _cache.Set(callKey, new CustomerServiceCallSettings(), TimeSpan.FromHours(2));
 
             using var clientWebSocket = await httpContext.WebSockets.AcceptWebSocketAsync();
@@ -78,7 +78,7 @@ namespace Alduin
 
                     if (settings == null)
                     {
-                        _logger.LogError("Settings for call {callSid} was not found", cacheKey);
+                        _logger.LogError("Settings for call {cacheKey} was not found", cacheKey);
                         await CloseWebSocket(openAiWebSocket, "Open AI");
                         continue;
                     }
@@ -168,7 +168,7 @@ namespace Alduin
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Failed to process Open AI Web Socket event. Event details: {content}. Call SID: {callSid}", eventContent, cacheKey);
+                    _logger.LogError(ex, "Failed to process Open AI Web Socket event. Event details: {content}. Call SID: {cacheKey}", eventContent, cacheKey);
                 }
             }
         }
@@ -182,7 +182,7 @@ namespace Alduin
 
                 if (settings == null)
                 {
-                    _logger.LogError("Settings for call {callSid} was not found", cacheKey);
+                    _logger.LogError("Settings for call {cacheKey} was not found", cacheKey);
                     await CloseWebSocket(clientWebSocket, "Twillio");
                     continue;
                 }
@@ -220,7 +220,6 @@ namespace Alduin
                     if (eventType == "start")
                     {
                         settings.StreamSid = documentRoot.Value.GetProperty("start").GetStringProperty("streamSid");
-                        settings.CallSid = documentRoot.Value.GetProperty("start").GetStringProperty("callSid");
                     }
 
                     if (eventType == "media")
@@ -236,7 +235,7 @@ namespace Alduin
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Failed to process Twillio Web Socket event. Event details: {content}. Call SID: {callSid}", eventContent, cacheKey);
+                    _logger.LogError(ex, "Failed to process Twillio Web Socket event. Event details: {content}. Call SID: {cacheKey}", eventContent, cacheKey);
                 }
             }
         }
