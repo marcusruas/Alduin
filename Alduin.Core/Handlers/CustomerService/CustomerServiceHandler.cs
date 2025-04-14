@@ -33,7 +33,7 @@ namespace Alduin
             string callKey = $"AlduinCall_{Guid.NewGuid()}";
             _cache.Set(callKey, new CustomerServiceCallSettings(), TimeSpan.FromHours(2));
 
-            using var clientWebSocket = await httpContext.WebSockets.AcceptWebSocketAsync();
+            using var twilioWebSocket = await httpContext.WebSockets.AcceptWebSocketAsync();
             using var openAiWebSocket = new ClientWebSocket();
 
             var openAiWebSocketUri = new Uri(string.Format(AlduinSettings.OPEN_AI_WEBSOCKET_URL, _settings.RealtimeModel));
@@ -49,8 +49,8 @@ namespace Alduin
 
             var wsHandlers = new Task[]
             {
-                HandleOpenAIWebSocket(callKey, openAiWebSocket, clientWebSocket),
-                HandleClientWebSocket(callKey, clientWebSocket, openAiWebSocket)
+                HandleOpenAIWebSocket(callKey, openAiWebSocket, twilioWebSocket),
+                HandleTwilioWebSocket(callKey, twilioWebSocket, openAiWebSocket)
             };
 
             await Task.WhenAll(wsHandlers);
@@ -58,11 +58,11 @@ namespace Alduin
 
         private async Task InitializeOpenAISession(ClientWebSocket openAiWebSocket)
         {
-            await SendWebSocketMessage(openAiWebSocket, OpenAIEventsBuilder.BuildSessionUpdateEvent(_settings));
-            await SendWebSocketMessage(openAiWebSocket, OpenAIEventsBuilder.StartConversationEvent, true);
+            await SendMessage(openAiWebSocket, OpenAIEventsBuilder.BuildSessionUpdateEvent(_settings));
+            await SendMessage(openAiWebSocket, OpenAIEventsBuilder.StartConversationEvent, true);
         }
 
-        private async Task HandleOpenAIWebSocket(string cacheKey, ClientWebSocket openAiWebSocket, WebSocket clientWebSocket)
+        private async Task HandleOpenAIWebSocket(string cacheKey, ClientWebSocket openAiWebSocket, WebSocket twilioWebSocket)
         {
             var buffer = new byte[8192 * 2];
             while (openAiWebSocket.State == WebSocketState.Open)
@@ -74,101 +74,97 @@ namespace Alduin
 
                 try
                 {
+                    if (receivedEvent.MessageType == WebSocketMessageType.Close)
+                    {
+                        await CloseWebSocket(openAiWebSocket);
+                        break;
+                    }
+
+                    if (twilioWebSocket.State != WebSocketState.Open)
+                    {
+                        await CloseWebSocket(openAiWebSocket);
+                        break;
+                    }
+
                     var settings = _cache.Get<CustomerServiceCallSettings>(cacheKey);
 
                     if (settings == null)
                     {
-                        _logger.LogError("Settings for call {cacheKey} was not found", cacheKey);
-                        await CloseWebSocket(openAiWebSocket, "Open AI");
+                        _logger.LogError("Call {cacheKey} has ended because the cache expired.", cacheKey);
+                        await CloseAllWebSockets(openAiWebSocket, twilioWebSocket);
                         continue;
-                    }
-
-                    if (!string.IsNullOrWhiteSpace(eventContent) && eventContent.Contains("error"))
-                        _logger.LogInformation("[OPEN AI] An error event was received by the web socket: {0}", eventContent);
-
-                    if (receivedEvent.MessageType == WebSocketMessageType.Close)
-                    {
-                        await CloseWebSocket(openAiWebSocket, "Twilio");
-                        break;
-                    }
-
-                    if (clientWebSocket.State != WebSocketState.Open)
-                    {
-                        await CloseWebSocket(openAiWebSocket, "Open AI");
-                        break;
                     }
 
                     if (!eventContent.TryParseToJson(out var root) || !root.HasValue)
                         continue;
 
+                    if (!string.IsNullOrWhiteSpace(eventContent) && eventContent.Contains("error"))
+                        _logger.LogInformation("[OPEN AI] An error event was received by the web socket: {0}", eventContent);
+
                     var eventType = root.GetStringProperty("type");
 
-                    if (eventType == "input_audio_buffer.speech_started")
+                    switch (eventType)
                     {
-                        settings.LastClientSpeech = DateTime.UtcNow;
-                        await InterruptAssistant(clientWebSocket, openAiWebSocket, settings);
-                    }
+                        case "input_audio_buffer.speech_started":
+                            await InterruptAssistant(twilioWebSocket, openAiWebSocket, settings);
+                            break;
+                        case "response.audio.delta":
+                            var delta = root.GetStringProperty("delta");
+                            if (string.IsNullOrWhiteSpace(delta))
+                                continue;
 
-                    if (eventType == "response.audio.delta")
-                    {
-                        var deltaEvent = OpenAIEventsBuilder.BuildDeltaEvent(settings.StreamSid, root.GetStringProperty("delta"));
-                        await SendWebSocketMessage(clientWebSocket, deltaEvent);
+                            var deltaEvent = OpenAIEventsBuilder.BuildDeltaEvent(settings.StreamSid, delta);
+                            await SendMessage(twilioWebSocket, deltaEvent);
 
-                        if (settings.FirstDeltaFromCurrentResponse == null)
-                            settings.FirstDeltaFromCurrentResponse = settings.LatestTimestamp;
+                            if (settings.FirstDeltaFromCurrentResponse == null)
+                                settings.FirstDeltaFromCurrentResponse = settings.LatestTimestamp;
 
-                        var currentAssistant = root.GetStringProperty("item_id");
-                        if (!string.IsNullOrWhiteSpace(currentAssistant))
-                            settings.LastAssistantId = currentAssistant;
+                            var currentAssistant = root.GetStringProperty("item_id");
+                            if (!string.IsNullOrWhiteSpace(currentAssistant))
+                                settings.LastAssistantId = currentAssistant;
 
-                        await SendMark(clientWebSocket, settings);
-                    }
-
-                    if (eventType == "response.done")
-                    {
-                        var status = root.Value.GetStringProperty("status");
-
-                        if (status == "failed")
-                        {
-                            _logger.LogError("Open AI Web Socket received a failed response event: {content}", eventContent);
-                            continue;
-                        }
-
-                        var outputObject = root.Value.GetProperty("response").GetProperty("output").FirstOrDefault();
-
-                        if (outputObject == null)
-                            continue;
-
-                        var type = outputObject.Value.GetStringProperty("type");
-
-                        if (type == "function_call")
-                        {
-                            var functionName = outputObject.GetStringProperty("name");
-                            var arguments = outputObject.Value.GetProperty("arguments");
-                            var callId = outputObject.GetStringProperty("call_id");
-
-                            _logger.LogInformation("Assistant called function {functionName}. Arguments: {arguments}", functionName, arguments);
-
-                            if (functionName == "end_call")
+                            await SendMark(twilioWebSocket, settings);
+                            break;
+                        case "response.done":
+                            if (root.Value.GetStringProperty("status") == "failed")
                             {
-                                var response = OpenAIEventsBuilder.BuildFunctionResponseEvent(callId, new { response = "The call will close in around 5 seconds. Warn the user in his language" });
-                                await SendWebSocketMessage(openAiWebSocket, response, true);
+                                _logger.LogError("Open AI Web Socket received a failed response event: {content}", eventContent);
+                                continue;
+                            }
 
-                                EndCall(clientWebSocket, openAiWebSocket);
-                            }
-                            else if (_functions.TryGet(functionName, out var handler))
-                            {
-                                
-                                var functionResult = await handler(_serviceProvider, arguments);
+                            var outputObject = root.Value.GetProperty("response").GetProperty("output").FirstOrDefault();
 
-                                var response =  OpenAIEventsBuilder.BuildFunctionResponseEvent(callId, functionResult);
-                                await SendWebSocketMessage(openAiWebSocket, response, true);
-                            }
-                            else
+                            if (outputObject == null)
+                                continue;
+
+                            var type = outputObject.Value.GetStringProperty("type");
+
+                            if (type == "function_call")
                             {
-                                _logger.LogError("Function {function} was not found in the registry.", functionName);
+                                var functionName = outputObject.GetStringProperty("name");
+                                var arguments = outputObject.Value.GetProperty("arguments");
+                                var callId = outputObject.GetStringProperty("call_id");
+
+                                _logger.LogInformation("Assistant called function {functionName}. Arguments: {arguments}", functionName, arguments);
+
+                                if (functionName == "end_call")
+                                {
+                                    var response = OpenAIEventsBuilder.BuildFunctionResponseEvent(callId, new { response = "The call will close in around 10 seconds. Warn the user in his language" });
+                                    await SendMessage(openAiWebSocket, response, true);
+                                    EndCall(twilioWebSocket, openAiWebSocket);
+                                }
+                                else if (_functions.TryGet(functionName, out var handler))
+                                {
+                                    var functionResult = await handler(_serviceProvider, arguments);
+                                    var response = OpenAIEventsBuilder.BuildFunctionResponseEvent(callId, functionResult);
+                                    await SendMessage(openAiWebSocket, response, true);
+                                }
+                                else
+                                {
+                                    _logger.LogError("Function {function} was not found in the registry.", functionName);
+                                }
                             }
-                        }
+                            break;
                     }
                 }
                 catch (Exception ex)
@@ -178,8 +174,86 @@ namespace Alduin
             }
         }
 
-        private async Task InterruptAssistant(WebSocket clientWebSocket, ClientWebSocket openAiWebSocket, CustomerServiceCallSettings settings)
+        private async Task HandleTwilioWebSocket(string cacheKey, WebSocket twilioWebSocket, ClientWebSocket openAiWebSocket)
         {
+            var buffer = new byte[8192 * 2];
+            while (twilioWebSocket.State == WebSocketState.Open)
+            {
+                var receivedEvent = await twilioWebSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
+                var eventContent = Encoding.UTF8.GetString(buffer, 0, receivedEvent.Count);
+
+                _logger.LogDebug("[Twilio] Web Socket Event received: {event}. Content: {content}", JsonSerializer.Serialize(receivedEvent), eventContent);
+
+                try
+                {
+                    if (receivedEvent.MessageType == WebSocketMessageType.Close)
+                    {
+                        await CloseWebSocket(openAiWebSocket);
+                        break;
+                    }
+
+                    if (openAiWebSocket.State != WebSocketState.Open)
+                    {
+                        await CloseWebSocket(twilioWebSocket);
+                        break;
+                    }
+
+                    var settings = _cache.Get<CustomerServiceCallSettings>(cacheKey);
+
+                    if (settings == null)
+                    {
+                        _logger.LogError("Call {cacheKey} has ended because the cache expired.", cacheKey);
+                        await CloseAllWebSockets(openAiWebSocket, twilioWebSocket);
+                        continue;
+                    }
+
+                    if (settings.SecondsSinceLastSpeech >= _settings.ClientInactivityTimeout)
+                    {
+                        _logger.LogInformation("Call {cacheKey} has ended due to inactivity.", cacheKey);
+                        await CloseAllWebSockets(openAiWebSocket, twilioWebSocket);
+                        continue;
+                    }
+
+                    if (!eventContent.TryParseToJson(out var documentRoot) || !documentRoot.HasValue)
+                        continue;
+
+                    if (!string.IsNullOrWhiteSpace(eventContent) && eventContent.Contains("error"))
+                        _logger.LogInformation("[Twilio] An error event was received by the web socket: {event}", eventContent);
+
+                    var eventType = documentRoot.GetStringProperty("event");
+
+                    switch (eventType)
+                    {
+                        case "start":
+                            settings.StreamSid = documentRoot.Value.GetProperty("start").GetStringProperty("streamSid");
+                            settings.FirstDeltaFromCurrentResponse = null;
+                            break;
+                        case "media":
+                            var mediaObject = documentRoot.Value.GetProperty("media");
+
+                            settings.LatestTimestamp = mediaObject.GetIntProperty("timestamp") ?? 0;
+                            await SendMessage(openAiWebSocket, new
+                            {
+                                type = "input_audio_buffer.append",
+                                audio = mediaObject.GetStringProperty("payload")
+                            });
+                            break;
+                        case "mark" when settings.Marks.Any():
+                            settings.Marks.TryDequeue(out _);
+                            break;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to process Twilio Web Socket event. Event details: {content}. Call SID: {cacheKey}", eventContent, cacheKey);
+                }
+            }
+        }
+
+        private async Task InterruptAssistant(WebSocket twilioWebSocket, ClientWebSocket openAiWebSocket, CustomerServiceCallSettings settings)
+        {
+            settings.LastClientSpeech = DateTime.UtcNow;
+
             if (!settings.Marks.Any() || settings.FirstDeltaFromCurrentResponse == null)
                 return;
 
@@ -187,7 +261,7 @@ namespace Alduin
 
             if (!string.IsNullOrWhiteSpace(settings.LastAssistantId))
             {
-                await SendWebSocketMessage(openAiWebSocket, new
+                await SendMessage(openAiWebSocket, new
                 {
                     type = "conversation.item.truncate",
                     item_id = settings.LastAssistantId,
@@ -196,7 +270,7 @@ namespace Alduin
                 });
             }
 
-            await SendWebSocketMessage(clientWebSocket, new
+            await SendMessage(twilioWebSocket, new
             {
                 @event = "clear",
                 streamSid = settings.StreamSid
@@ -207,12 +281,12 @@ namespace Alduin
             settings.FirstDeltaFromCurrentResponse = null;
         }
 
-        private async Task SendMark(WebSocket clientWebSocket, CustomerServiceCallSettings settings)
+        private async Task SendMark(WebSocket twilioWebSocket, CustomerServiceCallSettings settings)
         {
             if (string.IsNullOrWhiteSpace(settings.StreamSid))
                 return;
 
-            await SendWebSocketMessage(clientWebSocket, new
+            await SendMessage(twilioWebSocket, new
             {
                 @event = "mark",
                 streamSid = settings.StreamSid,
@@ -222,122 +296,37 @@ namespace Alduin
             settings.Marks.Enqueue("responsePart");
         }
 
-        private async Task HandleClientWebSocket(string cacheKey, WebSocket clientWebSocket, ClientWebSocket openAiWebSocket)
-        {
-            var buffer = new byte[8192 * 2];
-            while (clientWebSocket.State == WebSocketState.Open)
-            {
-                var receivedEvent = await clientWebSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
-                var eventContent = Encoding.UTF8.GetString(buffer, 0, receivedEvent.Count);
-
-                _logger.LogDebug("[Twilio] Web Socket Event received: {event}. Content: {content}", JsonSerializer.Serialize(receivedEvent), eventContent);
-
-                try
-                {
-                    var settings = _cache.Get<CustomerServiceCallSettings>(cacheKey);
-                    
-                    if (settings == null)
-                    {
-                        _logger.LogError("Settings for call {cacheKey} was not found", cacheKey);
-                        await CloseWebSocket(clientWebSocket, "Twilio");
-                        continue;
-                    }
-
-                    if (settings.SecondsSinceLastSpeech >= _settings.ClientInactivityTimeout)
-                    {
-                        EndCall(clientWebSocket, openAiWebSocket);
-                        continue;
-                    }
-
-                    if (!string.IsNullOrWhiteSpace(eventContent) && eventContent.Contains("error") || eventContent.Contains("fail"))
-                        _logger.LogInformation("[Twilio] An error event was received by the web socket: {0}", eventContent);
-
-                    if (receivedEvent.MessageType == WebSocketMessageType.Close)
-                    {
-                        await CloseWebSocket(openAiWebSocket, "Open AI");
-                        break;
-                    }
-
-                    if (openAiWebSocket.State != WebSocketState.Open)
-                    {
-                        await CloseWebSocket(clientWebSocket, "Twilio");
-                        break;
-                    }
-
-                    if (!eventContent.TryParseToJson(out var documentRoot) || !documentRoot.HasValue)
-                        continue;
-
-                    var eventType = documentRoot.GetStringProperty("event");
-
-                    if (eventType == "start")
-                    {
-                        settings.StreamSid = documentRoot.Value.GetProperty("start").GetStringProperty("streamSid");
-
-                        settings.FirstDeltaFromCurrentResponse = null;
-                    }
-
-                    if (eventType == "media")
-                    {
-                        var mediaObject = documentRoot.Value.GetProperty("media");
-
-                        settings.LatestTimestamp = mediaObject.GetIntProperty("timestamp") ?? 0;
-                        var audio = new
-                        {
-                            type = "input_audio_buffer.append",
-                            audio = mediaObject.GetStringProperty("payload")
-                        };
-
-                        await SendWebSocketMessage(openAiWebSocket, audio);
-                    }
-
-                    if (eventType == "mark")
-                    {
-                        if (settings.Marks.Any())
-                        {
-                            settings.Marks.TryDequeue(out _);
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Failed to process Twilio Web Socket event. Event details: {content}. Call SID: {cacheKey}", eventContent, cacheKey);
-                }
-            }
-        }
-
         #region WEB SOCKET HELPERS
 
-        private void EndCall(WebSocket clientWebSocket, ClientWebSocket openAiWebSocket)
+        private void EndCall(WebSocket twilioWebSocket, ClientWebSocket openAiWebSocket)
         {
             _ = Task.Run(async () =>
             {
                 _logger.LogInformation("A call has ended.");
                 await Task.Delay(TimeSpan.FromSeconds(10));
-                await CloseWebSocket(openAiWebSocket, "Open AI");
-                await CloseWebSocket(clientWebSocket, "Client");
+                await CloseAllWebSockets(openAiWebSocket, twilioWebSocket);
             });
         }
 
-        private async Task SendWebSocketMessage(WebSocket websocket, object message, bool requestResponseFromEvent = false)
+        private static async Task SendMessage(WebSocket websocket, object message, bool requestResponseFromEvent = false)
         {
-            string json = message is string cast ? cast : JsonSerializer.Serialize(message);
-            var bytes = Encoding.UTF8.GetBytes(json);
+            string messageJson = message is string cast ? cast : JsonSerializer.Serialize(message);
+            var bytes = Encoding.UTF8.GetBytes(messageJson);
 
-            await websocket.SendAsync(
-                new ArraySegment<byte>(bytes),
-                WebSocketMessageType.Text,
-                endOfMessage: true,
-                cancellationToken: CancellationToken.None
-            );
+            await websocket.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, CancellationToken.None);
 
             if (requestResponseFromEvent)
-                await SendWebSocketMessage(websocket, new { type = "response.create" });
+                await SendMessage(websocket, new { type = "response.create" });
         }
 
-        private async Task CloseWebSocket(WebSocket websocket, string webSocketName = "Default")
+        private static async Task CloseAllWebSockets(ClientWebSocket openAiWebSocket, WebSocket twilioWebSocket)
         {
-            _logger.LogInformation("Closing WebSocket {websocket}", webSocketName);
+            await CloseWebSocket(openAiWebSocket);
+            await CloseWebSocket(twilioWebSocket);
+        }
 
+        private static async Task CloseWebSocket(WebSocket websocket)
+        {
             if (websocket.State == WebSocketState.Open)
                 await websocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None);
         }
