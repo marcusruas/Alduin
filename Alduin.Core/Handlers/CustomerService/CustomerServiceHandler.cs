@@ -139,31 +139,30 @@ namespace Alduin
 
                             var type = outputObject.Value.GetStringProperty("type");
 
-                            if (type == "function_call")
+                            if (type != "function_call")
+                                continue;
+
+                            var functionName = outputObject.GetStringProperty("name");
+                            var arguments = outputObject.Value.GetProperty("arguments");
+                            var callId = outputObject.GetStringProperty("call_id");
+
+                            _logger.LogInformation("Assistant called function {functionName}. Arguments: {arguments}", functionName, arguments);
+
+                            if (functionName == "end_call")
                             {
-                                var functionName = outputObject.GetStringProperty("name");
-                                var arguments = outputObject.Value.GetProperty("arguments");
-                                var callId = outputObject.GetStringProperty("call_id");
-
-                                _logger.LogInformation("Assistant called function {functionName}. Arguments: {arguments}", functionName, arguments);
-
-                                if (functionName == "end_call")
-                                {
-                                    var response = OpenAIEventsBuilder.BuildFunctionResponseEvent(callId, new { response = "The call will close in around 10 seconds. Warn the user in his language" });
-                                    await SendMessage(openAiWebSocket, response, true);
-                                    EndCall(twilioWebSocket, openAiWebSocket);
-                                }
-                                else if (_functions.TryGet(functionName, out var handler))
-                                {
-                                    var functionResult = await handler(_serviceProvider, arguments);
-                                    var response = OpenAIEventsBuilder.BuildFunctionResponseEvent(callId, functionResult);
-                                    await SendMessage(openAiWebSocket, response, true);
-                                }
-                                else
-                                {
-                                    _logger.LogError("Function {function} was not found in the registry.", functionName);
-                                }
+                                var response = OpenAIEventsBuilder.BuildFunctionResponseEvent(callId, new { response = "The call will close in around 10 seconds. Warn the user in his language" });
+                                await SendMessage(openAiWebSocket, response, true);
+                                EndCall(twilioWebSocket, openAiWebSocket);
                             }
+                            else if (_functions.TryGet(functionName, out var handler))
+                            {
+                                var functionResult = await handler(_serviceProvider, arguments); 
+                                var response = OpenAIEventsBuilder.BuildFunctionResponseEvent(callId, functionResult);
+                                await SendMessage(openAiWebSocket, response, true);
+                            }
+
+                            _logger.LogError("Function {function} was not found in the registry.", functionName);
+                            EndCall(twilioWebSocket, openAiWebSocket);
                             break;
                     }
                 }
