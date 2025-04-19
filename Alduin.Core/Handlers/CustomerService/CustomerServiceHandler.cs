@@ -156,9 +156,18 @@ namespace Alduin
                             }
                             else if (_functions.TryGet(functionName, out var handler))
                             {
-                                var functionResult = await handler(_serviceProvider, arguments); 
-                                var response = OpenAIEventsBuilder.BuildFunctionResponseEvent(callId, functionResult);
-                                await SendMessage(openAiWebSocket, response, true);
+                                try
+                                {
+                                    var functionResult = await handler(_serviceProvider, arguments);
+                                    var response = OpenAIEventsBuilder.BuildFunctionResponseEvent(callId, functionResult);
+                                    await SendMessage(openAiWebSocket, response, true);
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger.LogError(ex, "Function {functionName} returned an error. Arguments: {args}", functionName, arguments);
+                                    var response = OpenAIEventsBuilder.BuildFunctionResponseEvent(callId, new { error = $"The function {functionName} returned an error. The call need to be ended. Details: {ex.Message}" });
+                                    await SendMessage(openAiWebSocket, response, true);
+                                }
                             }
 
                             _logger.LogError("Function {function} was not found in the registry.", functionName);

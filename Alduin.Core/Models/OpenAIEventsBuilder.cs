@@ -67,17 +67,27 @@ namespace Alduin.Models
             }
         };
 
-        public static object BuildFunctionResponseEvent(string? callId, object response) => new
+        public static object BuildFunctionResponseEvent(string? callId, object response)
         {
-            type = "conversation.item.create",
-            item = new
+            var serializerOptions = new JsonSerializerOptions()
             {
-                type = "function_call_output",
-                call_id = callId,
-                output = JsonSerializer.Serialize(response)
-            }
-        };
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+                WriteIndented = false
+            };
 
+            return new
+            {
+                type = "conversation.item.create",
+                item = new
+                {
+                    type = "function_call_output",
+                    call_id = callId,
+                    output = JsonSerializer.Serialize(response, serializerOptions)
+                }
+            };
+        }
+        
         public static object StartConversationEvent = new
         {
             type = "conversation.item.create",
