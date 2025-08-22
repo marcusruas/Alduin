@@ -36,7 +36,7 @@ namespace Alduin
             using var twilioWebSocket = await httpContext.WebSockets.AcceptWebSocketAsync();
             using var openAiWebSocket = new ClientWebSocket();
 
-            var openAiWebSocketUri = new Uri(string.Format(AlduinSettings.OPEN_AI_WEBSOCKET_URL, _settings.RealtimeModel));
+            var openAiWebSocketUri = new Uri(string.Format(AlduinRealtimeSettings.OPEN_AI_WEBSOCKET_URL, _settings.Realtime.RealtimeModel));
             openAiWebSocket.Options.SetRequestHeader("Authorization", $"Bearer {_settings.OpenAIApiKey}");
             openAiWebSocket.Options.SetRequestHeader("OpenAI-Beta", "realtime=v1");
             await openAiWebSocket.ConnectAsync(openAiWebSocketUri, CancellationToken.None);
@@ -215,7 +215,7 @@ namespace Alduin
                         continue;
                     }
 
-                    if (settings.SecondsSinceLastSpeech >= _settings.ClientInactivityTimeout)
+                    if (settings.SecondsSinceLastSpeech >= _settings.Realtime.ClientInactivityTimeout)
                     {
                         _logger.LogInformation("Call {cacheKey} has ended due to inactivity.", cacheKey);
                         await CloseAllWebSockets(openAiWebSocket, twilioWebSocket);

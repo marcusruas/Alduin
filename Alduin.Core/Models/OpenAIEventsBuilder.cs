@@ -37,7 +37,7 @@ namespace Alduin.Models
                 type: "session.update",
                 session: new SessionContent(
                     tools: settings.UseFunctions ? functions : [BuildHangupFunction()],
-                    voice: settings.AIVoice,
+                    voice: settings.Realtime.AIVoice,
                     instructions: settings.OperatorInstructions,
                     turn_detection: new TurnDetection(type: "server_vad"),
                     input_audio_format: "g711_ulaw",

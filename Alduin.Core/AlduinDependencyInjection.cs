@@ -58,27 +58,32 @@ namespace Alduin
             if (settings == null)
                 throw new ArgumentException("AlduinSettings was not registered. Make sure to call services.AddAlduin(...) before using AddAlduin on the application.");
 
-            app.MapPost(settings.IncomingCallsEndpointUrl, (HttpContext context) =>
+            app.MapPost(settings.Realtime.IncomingCallsEndpointUrl, (HttpContext context) =>
             {
                 var response = new VoiceResponse();
                 var connect = new Connect();
-                connect.Stream(url: $"wss://{context.Request.Host}{settings.WebSocketUrl}");
+                connect.Stream(url: $"wss://{context.Request.Host}{settings.Realtime.WebSocketUrl}");
 
                 response.Append(connect);
 
-                return Results.Content(response.ToString(), "application/xml");
+                return Results.Content(response.ToString(), "text/xml");
             });
 
-            app.Map(settings.WebSocketUrl, async (HttpContext context) =>
+            app.MapGet(settings.Realtime.WebSocketUrl, async (HttpContext context) =>
             {
-                if (!context.WebSockets.IsWebSocketRequest)
+                if (context.WebSockets.IsWebSocketRequest)
+                {
+                    var customerServiceHandler = context.RequestServices.GetService<ICustomerServiceHandler>();
+
+                    if (customerServiceHandler == null)
+                        throw new ArgumentException("ICustomerServiceHandler was not registered. Make sure to call services.AddAlduin(...) before using AddAlduin on the application.");
+
+                    await customerServiceHandler.HandleAsync(context);
+                }
+                else
                 {
                     context.Response.StatusCode = 400;
-                    return;
                 }
-
-                var handler = context.RequestServices.GetRequiredService<ICustomerServiceHandler>();
-                await handler.HandleAsync(context);
             });
 
             return app;
